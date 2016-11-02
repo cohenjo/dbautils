@@ -1,0 +1,18 @@
+#!/bin/ksh
+############################################3
+# show8locks
+# 
+# by Adi Zohar
+# 
+# 01/02/2003
+############################################3
+
+sqlplus -s "/ as sysdba" <<EOF
+
+set lines 200
+set serveroutput on size 1000000
+alter session set "_hash_join_enabled"=true;
+exec sys.show_lock_pkg.showlock
+exit
+/
+EOF

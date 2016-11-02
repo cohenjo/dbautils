@@ -1,0 +1,45 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to generate disable/enable constraints
+#
+#  USAGE: showdisablecons user
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "User must be provided: \c"; read NAME
+fi
+
+if [ -z "$NAME" ] 
+then
+  exit 1
+fi
+
+echo "************************************************************************************"
+echo "*                             Disable Constraints                                  *"
+echo "************************************************************************************"
+sqlplus -s "/ as sysdba" <<EOF
+set pagesize 0 lines 199 trimspo on feed off head off veri off
+select 'ALTER TABLE '||TABLE_NAME||' DISABLE CONSTRAINT '|| CONSTRAINT_NAME || ';'
+from dba_constraints
+where constraint_type = 'R'
+and owner=upper('$NAME');
+EOF
+
+echo " "
+echo "************************************************************************************"
+echo "*                             Enable Constraints                                   *"
+echo "************************************************************************************"
+sqlplus -s "/ as sysdba" <<EOF
+set pagesize 0 lines 199 trimspo on feed off head off veri off
+select 'ALTER TABLE '||TABLE_NAME||' ENABLE CONSTRAINT '|| CONSTRAINT_NAME || ';'
+from dba_constraints
+where constraint_type = 'R'
+and owner=upper('$NAME');
+EOF
+
+

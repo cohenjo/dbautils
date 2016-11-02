@@ -1,0 +1,48 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show high cpu for the database
+#
+#  Sam Yeoman 2009
+#
+#*****************************************************************************
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+column username format a20
+column process format 999
+column process format a11
+column s_process format a11
+column osuser format a10
+column machine format a20 trunc
+column program format a30 trunc
+column name format a30
+column value for 99,999,999
+column CPU_CUMUL_MIN format 999,999.99
+alter session set "_hash_join_enabled"=true;
+ 
+SELECT *
+FROM (SELECT /*+ ordered use_hash(s,t,n,p) */ s.inst_id,
+             s.ksusenum sid,
+             n.ksuudlna username,
+             n.ksusepid process,
+             p.ksuprpid s_process,
+             n.ksuseunm osuser,
+             n.ksusemnm machine,
+             n.ksusepnm program,
+             s.ksusestv VALUE,       
+             round(NVL(s.ksusestv/60/100,0),2) CPU_CUMUL_MIN  
+      FROM x\$ksusesta s, x\$ksusd t, x\$ksuse n, x\$ksupr p
+      WHERE     s.ksusestn = t.indx
+            AND n.indx = s.ksusenum
+            AND t.ksusdnam = 'CPU used by this session'
+            AND p.addr=n.ksusepro
+            AND n.ksuudlna is not null
+      ORDER BY s.ksusestv DESC)
+WHERE ROWNUM < 25
+/
+EOF

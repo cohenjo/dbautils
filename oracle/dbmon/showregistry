@@ -1,0 +1,13 @@
+#!/bin/sh
+sqlplus -s "/ as sysdba" <<EOF
+set lines 199 trimsp on pages 1000
+col action for a15
+col namespace for a10
+col version for a13
+col id for 99999999999
+col comments for a30
+col bundle_series for a20
+set feed off
+select to_char(action_time,'YYYY-MM-DD HH24:MI') action_time , action, namespace, version, id, comments, bundle_series 
+from sys.registry\$history order by action_time;
+EOF

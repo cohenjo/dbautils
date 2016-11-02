@@ -1,0 +1,282 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show parallel queries
+#
+#  USAGE: showperformance
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+typeset -u TOP_SQL=`echo $1|cut -d. -f1`
+
+if [ -z "$TOP_SQL" ]
+then
+        export TOP_SQL=20
+fi
+
+sqlplus -s "/ as sysdba" <<EOS
+clear buffer
+set pages 0 verify off line 180 feed off 
+column line format a70
+alter session set NLS_DATE_FORMAT='DD/MM/YYYY HH24:MI';
+
+prompt ***********************************************************************************************************
+select '* ' || host_name || ' : ' || instance_name  || ' at ' || to_char (sysdate,'DD/MM/YYYY HH24:MI') as line from v\$instance;
+prompt ***********************************************************************************************************
+
+select 'DB Memory:' || trunc(sum(value)/1024/1024) ||' MB' from v\$sga;
+select 'All Connections: ' || count(*) from v\$session where username!='SYS' and username is not null;
+select 'DBI Connections: ' || count(*) from v\$session where username='DBI_TEMP_USER';
+select 'Active Connections: ' || count(*) from v\$session where status='ACTIVE';
+select 'Total Parallel Processes: ' || count(*) from v\$px_session;
+
+prompt 
+prompt **********************************
+prompt *          DBI  Programs         *
+prompt **********************************
+col program for a40
+col connections for 9999
+set pages 1000  
+select /* showperformance */ program, count(*) connections from v\$session where username='DBI_TEMP_USER' and program not like 'oracle%' group by program order by 2 desc;
+
+set pages 1000 lines 190 feed off
+col Machine for a13 trunc
+col Os_User for a7 trunc
+col Mstr for 99999
+col sid for 99999
+col para for 999
+col usr for a10 trunc
+col module for a8 trunc
+col secs for a8        
+col sql_text for a60 trunc
+col sql_text1 for a74 trunc head "SQL"
+col sql_text2 for a90 trunc head "SQL"
+col sql_text3 for a100 trunc head "SQL"
+col undo_used for a10
+col Os_Process for a10 trunc
+col owner for a20 trunc
+col table_name for a30 trunc
+col program for a20 trunc
+col connectons for 99999
+col start_time for a20
+col SUSPEND_TIME for a20
+col temp_mb for 999999 
+col undo_mb for 999999 
+col temp_gb for 999.99 
+set lines 199 trimsp on 
+col log_time for a5 head LOGIN
+col SQL_TEXT for a55 trunc
+
+prompt  
+prompt **********************************
+prompt *       PARALLEL Processes       *
+prompt **********************************
+break on report
+compute sum of para on report
+
+set heading on
+select /* showperformance */ 
+        a.qcsid Mstr,
+        count(*)-1 para ,
+        sum(req_degree) / nvl(avg(degree),1) reqpar,
+        b.status,
+        b.sql_id,
+        b.module,
+        replace(b.machine,'DITAD\','') machine ,
+        osuser Os_User, 
+        b.username usr, 
+        p.spid shadow,
+        max(regexp_substr(NUMTODSINTERVAL(b.last_call_et, 'SECOND'),'\d{0}\d{1}:\d{2}:\d{2}')) secs,
+        sum(temp_mb) as temp_mb ,
+        sum(undo_mb) as undo_mb ,
+        to_char(logon_time,'HH24:MI') log_time,
+        SQL_TEXT 
+  from  v\$px_session a, v\$session  b, v\$sqlarea t, v\$process p, 
+        (select ktssoses as saddr, ktssosno as serial#, sum((ktssoblks/128)) TEMP_MB from sys.x\$ktsso group by  ktssoses, ktssosno) tmp,
+        (select ses_addr as saddr,sum(used_ublk/128) UNDO_MB from v\$transaction group by ses_addr) undo
+ where 
+       a.qcsid = b.sid
+   and b.paddr=p.addr (+) 
+   and t.sql_id(+)=b.sql_id
+   and   a.saddr=tmp.saddr (+) and a.serial#=tmp.serial# (+)
+   and   a.saddr=undo.saddr (+)
+group by a.qcsid,b.process ,b.machine,b.osuser,b.username,b.sql_id,b.module,sql_text,logon_time,b.status, p.spid
+order by 11 desc,sql_id;
+
+prompt **********************************
+prompt *    ACTIVE SERIAL Processes     *
+prompt **********************************
+select /* showperformance */ sid,b.sql_id,
+        regexp_substr(NUMTODSINTERVAL(b.last_call_et, 'SECOND'),'\d{0}\d{1}:\d{2}:\d{2}') Secs, 
+        b.module, b.process Os_Process,replace(b.machine,'DITAD\','') machine,
+        b.osuser Os_User, b.username usr,TEMP_MB, undo_mb, SQL_TEXT sql_text1
+ from v\$session  b, v\$sqlarea t, (select ktssoses as saddr, ktssosno as serial#, sum((ktssoblks/128)) TEMP_MB from sys.x\$ktsso group by  ktssoses, ktssosno) tmp,
+(select ses_addr as saddr,sum(used_ublk/128) UNDO_MB from v\$transaction group by ses_addr) undo
+ where sid not in (select sid from v\$px_session)
+ and t.sql_id(+)=b.sql_id
+ and b.username is not null
+ and b.saddr=tmp.saddr (+) and b.serial#=tmp.serial# (+) and b.saddr=undo.saddr (+)
+ and status='ACTIVE' and username!='DBSNMP' and username!='SYS'
+order by 3 desc ;
+
+prompt  
+prompt **********************************
+prompt *         Locked objects         *
+prompt **********************************
+prompt  
+col name for a35 head "LOCKED OBJECT" 
+col status  for a3 head STA trunc
+col inst_id for 9 head "INS"
+col process for a6 head "OS PROC" trunc
+col session_id for 99999 head SID 
+col serial# for 999999 
+col os_user_name for a10 head "OS USER"  trunc
+col oracle_username for a13 head "LOCKING USER" trunc
+col username for a11 trunc
+col program for a40 trunc
+col load_time for a14 trunc
+col lock_held for a10 trunc
+col shadow format a6
+col object_name for a26 trunc
+select /*+ ordered use_nl(a,b) */ /* showperformance */
+    distinct inst_id,session_id,serial#,a.status,oracle_username,os_user_name,process, shadow, nvl(b.name,'-') object_name, lock_held, load_time, program
+from
+    (
+    SELECT /*+ ordered use_hash(x,l,s,b,p) */ 
+        x.inst_id,
+        s.indx session_id,
+        s.ksuseser serial#,
+        DECODE (BITAND (s.ksuseidl, 11),1, 'ACTIVE',0, DECODE (BITAND (s.ksuseflg, 4096), 0, 'INACTIVE', 'CACHED'),2, 'SNIPED',3, 'SNIPED','KILLED') STATUS,
+        s.ksuudlna oracle_username,
+        s.ksuseunm os_user_name,
+        p.ksuprpid shadow,
+        decode(l.ksqlkmod,
+   0, 'None',           /* Mon Lock equivalent */
+   1, 'Null',           /* N */
+   2, 'Row-S (SS)',     /* L */
+   3, 'Row-X (SX)',     /* R */
+   4, 'Share',          /* S */
+   5, 'S/Row-X (SSX)',  /* C */
+   6, 'Exclusive',      /* X */
+   to_char(l.ksqlkmod)) lock_held,  
+        x.ktcxbstm load_time, 
+        s.ksusepid process,
+        s.ksusepnm program,
+        l.ktadmtab as obj#
+    FROM 
+        x\$ktcxb x, 
+        x\$ksuse s, 
+        x\$ktadm l,
+        x\$ksupr p
+    WHERE 
+        x.ktcxbses = s.addr AND s.ksuudlna not in ('SYSTEM','OP_USER') AND
+        s.ksspaown= p.addr (+) AND
+        x.ktcxbxba = l.kssobown (+) and 
+        (
+            l.ktadmtab is not null
+            or
+            l.ktadmtab is null and BITAND (x.ksspaflg, 1) != 0 AND BITAND (x.ktcxbflg, 2) != 0
+            )
+    ) a,
+    sys.obj$ b
+    where a.obj#=b.obj# (+) 
+        order by 11,1,2;
+
+--select /* showperformance */ u.name OWNER, decode(c.name,'OBJ\$','CREATE TABLE',c.name) TABLE_NAME, substr(program,0,14) program , count(*) connections 
+----from sys.user\$ u, sys.obj\$ c,v\$session b,v\$locked_object a
+----where u.user#=c.owner# and a.session_id=b.sid and c.obj#=a.object_id and b.username not in ('SYSTEM','OP_USER') and u.name not in ('SYS','TOAD')
+----group by u.name, c.name,  substr(program,0,14) 
+----order by 1,2;
+
+prompt **********************************
+prompt *     PARALLEL Rollback          *
+prompt **********************************
+select /* showperformance */ USN,SLT,SEQ,STATE,UNDOBLOCKSDONE,UNDOBLOCKSTOTAL,RCVSERVERS from v\$fast_start_transactions
+where state!='RECOVERED';
+
+col mb for 999,999,999 head 'MB TO RECOVER'
+select trunc(sum(UNDOBLOCKSTOTAL -UNDOBLOCKSDONE)*8192/1024/1024) MB from v\$fast_start_transactions where state='RECOVERING';
+
+prompt 
+prompt **********************************
+prompt *   TOP $TOP_SQL SQLS Based on IO      *
+prompt **********************************
+set heading on feed off
+select /* showperformance */ * from (
+SELECT gv.sql_id,COUNT(*),ROUND(COUNT(*)*100/SUM(COUNT(*)) OVER(), 2) PCTLOAD, a.rows_processed ,SQL_TEXT sql_text3
+FROM gv\$active_session_history gv, v\$sqlarea a
+WHERE sample_time between SYSDATE - 1/288 and sysdate
+AND session_type = 'FOREGROUND'
+and SESSION_STATE!='ON CPU'
+and gv.sql_id=a.sql_id(+) and sql_text is not null
+and sql_text not like '%/* showperformance */%'
+GROUP BY gv.sql_id, SQL_TEXT ,rows_processed
+ORDER BY COUNT(*) DESC)
+where rownum <= $TOP_SQL;
+
+prompt 
+prompt **********************************
+prompt *   TOP $TOP_SQL SQLS Based on CPU     *
+prompt **********************************
+select /* showperformance */ * from (
+SELECT gv.sql_id,COUNT(*),ROUND(COUNT(*)*100/SUM(COUNT(*)) OVER(), 2) PCTLOAD, a.rows_processed , SQL_TEXT sql_text3
+FROM gv\$active_session_history gv, v\$sqlarea a
+WHERE sample_time between SYSDATE - 1/288 and sysdate
+AND session_type = 'FOREGROUND'
+and SESSION_STATE='ON CPU'
+and gv.sql_id=a.sql_id(+) and sql_text is not null
+and sql_text not like '%/* showperformance */%'
+GROUP BY gv.sql_id, SQL_TEXT ,a.rows_processed
+ORDER BY COUNT(*) DESC)
+where rownum <= $TOP_SQL ;
+
+prompt 
+prompt ***************************************************
+prompt *       Suspensed Sessions due to space           *
+prompt ***************************************************
+select /* showperformance */ 
+        USER_ID as usr,
+        SESSION_ID as sid,
+        SQL_TEXT,
+        START_TIME,
+        SUSPEND_TIME 
+from dba_resumable where STATUS = 'SUSPENDED';
+
+prompt 
+prompt ***************************************************
+prompt * Tablespaces with <10% free and <20GB free space *
+prompt *        (UNDO and TEMP not included)             *
+prompt ***************************************************
+col mb for 999,999
+col free for 999,999
+col used for 999,999
+col pfree for 999
+set feed on
+select /* showperformance */
+        d.tablespace_name,
+        round(NVL (a.bytes / 1024 / 1024, 0)) MB,
+        round(NVL (f.bytes / 1024 / 1024, 0)) free,
+        round((NVL (a.bytes / 1024 / 1024, 0) - NVL (f.bytes / 1024 / 1024, 0))) used,
+        round((f.bytes/a.bytes)*100,0) pfree
+          FROM sys.dba_tablespaces d,
+       (SELECT  min(AUTOEXTENSIBLE) as AUTOEXTENSIBLE, tablespace_name, SUM(bytes) bytes
+            FROM dba_data_files
+        GROUP BY tablespace_name) a,
+       (SELECT   tablespace_name, SUM(bytes) bytes
+            FROM dba_free_space
+        GROUP BY tablespace_name) f,
+       (SELECT   tablespace_name, MAX(bytes) large
+            FROM dba_free_space
+        GROUP BY tablespace_name) l
+ WHERE d.tablespace_name = a.tablespace_name(+)
+   AND d.tablespace_name = f.tablespace_name(+)
+   AND d.tablespace_name = l.tablespace_name(+)
+   AND a.AUTOEXTENSIBLE='NO'
+   AND NOT (d.extent_management LIKE 'LOCAL' AND d.contents LIKE 'TEMPORARY')
+   and round((f.bytes/a.bytes)*100,0) < 10 
+   and NVL (f.bytes / 1024 / 1024, 0) < 20000
+   and d.tablespace_name not like '%UNDO%'
+   order by 5 desc;
+
+EOS
+

@@ -1,0 +1,36 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+CREATE USER REF_SELF_SERVICE
+  IDENTIFIED BY REF_SELF_SERVICE_LINK
+  DEFAULT TABLESPACE POOL_DATA
+  TEMPORARY TABLESPACE TEMP
+  PROFILE DEFAULT
+  ACCOUNT UNLOCK;
+
+  GRANT REFWORK_QUERY_ROLE TO REF_SELF_SERVICE;
+  GRANT OP_WORK_QUERY_ROLE TO REF_SELF_SERVICE;
+  GRANT PD_WORK_QUERY_ROLE TO REF_SELF_SERVICE;
+  GRANT REF_APPL_QUERY_ROLE TO REF_SELF_SERVICE;
+  GRANT AUTHWORK_QUERY_ROLE TO REF_SELF_SERVICE;
+  GRANT CONNECTOR_ROLE to REF_SELF_SERVICE;
+  ALTER USER REF_SELF_SERVICE DEFAULT ROLE ALL;
+  ALTER USER REF_SELF_SERVICE QUOTA UNLIMITED ON POOL_DATA;
+
+CREATE SYNONYM REF_SELF_SERVICE.PD_PRODUCT_VIEW FOR PD_WORK.PD_PRODUCT;
+
+EOF
+gencreatesynonym REF_SELF_SERVICE REFWORK Y
+gencreatesynonym REF_SELF_SERVICE OP_WORK Y
+gencreatesynonym REF_SELF_SERVICE AUTHWORK Y
+gencreatesynonym REF_SELF_SERVICE PD_WORK Y
+gencreatesynonym REF_SELF_SERVICE REF_APPL Y
+

@@ -1,0 +1,53 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show free space at the end of each file
+#
+#  USAGE: showfullscan (optional SID)
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+typeset -u SID=`echo $1|cut -d. -f1`
+
+if [ ! -z "$SID" ] 
+then
+  export SID_WHERE="and s.sid=$SID"
+fi
+
+run_query()
+{
+sqlplus -s ${USHOW}/${PSHOW} <<EOF
+col SID format 99999
+col type format a7 head "Type"
+col username format a14 trunc head "DB User"
+col machine format a20 trunc head "Machine"
+col ctime for a12 head "Connect Time"
+col Percent for 999 head "%Done"
+col Message format a75 trunc
+set pages 200 lines 199 trimsp on feed off
+SELECT /*+ RULE */ 
+	s.SID,
+        s.TYPE "Type", 
+	s.username , 
+	s.machine "Machine", 
+        to_char(s.logon_time,'DD-MON HH24:MI') ctime, 
+	DECODE (vp.totalwork,0, 0,ROUND (100 * vp.sofar / vp.totalwork, 2)) "Percent",
+        vp.MESSAGE "Message"
+FROM v\$session s, v\$session_longops vp
+WHERE s.SID = vp.SID $STATUS_WHERE $SID_WHERE 
+order by 6,1 desc;
+EOF
+echo ""
+}
+
+echo "*****************"
+echo "*   Completed   *"
+echo "*****************"
+export STATUS_WHERE="and vp.sofar>=vp.totalwork"
+run_query
+echo "*****************"
+echo "* Not Completed *"
+echo "*****************"
+export STATUS_WHERE="and vp.sofar<vp.totalwork"
+run_query
+exit

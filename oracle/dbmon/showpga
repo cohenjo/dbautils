@@ -1,0 +1,38 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used predicts how the statistics cache hit percentage and  
+#  over allocation count in V$PGASTAT will be impacted if you change the value 
+#  of the initialization parameter PGA_AGGREGATE_TARGET 
+#
+#  USAGE: showpga
+#
+#  By Adi Zohar                            
+#*****************************************************************************
+
+sqlplus -s '/ as sysdba' <<EOF
+clear buffer
+set line 132 trims on pages 200 verify off feed off 
+col a format a20 head "Current"
+col target_mb for 999,999 head "Target MB"
+col ESTD_OVERALLOC_COUNT for 999,999 
+
+Prompt Current pga_aggregate_target size in MB
+select value/1024/1024 pga_aggregate_target_mb
+from v\$parameter 
+where name ='pga_aggregate_target';
+
+prompt
+Prompt Hit ratio of pga_aggregate_target, ESTD_OVERALLOC_COUNT needs to be 0
+Prompt cache_hit_perc needs to be closed to 100
+SELECT round(PGA_TARGET_FOR_ESTIMATE/1024/1024) target_mb,
+       ESTD_PGA_CACHE_HIT_PERCENTAGE cache_hit_perc,
+       ESTD_OVERALLOC_COUNT,
+	(case when p.value=PGA_TARGET_FOR_ESTIMATE then '<== Current' else '' end) a 
+FROM   
+	v\$pga_target_advice,
+	v\$parameter p
+where name ='pga_aggregate_target'
+/
+EOF
+

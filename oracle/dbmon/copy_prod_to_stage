@@ -1,0 +1,76 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: copy_prod_to_stage username
+#
+#*****************************************************************************
+
+typeset -u OWNER=$1
+
+#----------------------------------------------------------------------#
+# Checking the input params                                            #
+#----------------------------------------------------------------------#
+if [ ${#*} -lt 1 ]
+then
+    echo "Usage : <$prog_name> MASTER_USER"
+    echo "Eample: <$prog_name> PD_WORK_MASTER"
+    exit 1
+fi
+
+if [ `echo $OWNER | grep MASTER | wc -l` = 0 ]
+then
+        echo "OWNER Must have MASTER user"
+        exit 1
+fi
+
+TEMP_FILE=/tmp/copy_prod_to_stage_$$.sql
+TEMP_FILE_LOG=/tmp/copy_prod_to_stage_run_$$.sql
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off verify off line 250 pages 0 echo off trimspo on
+spool $TEMP_FILE
+select 'truncate table '||owner||'.'||table_name||';'||chr(10)||
+       'insert into '||owner||'.'||table_name||' select * from '||replace(owner,'_MASTER','')||'.'||TABLE_NAME||';' 
+from dba_tables dt
+where dt.owner in ('${OWNER}') and 
+exists (select 1 from dba_tables t where t.owner=replace(dt.owner,'_MASTER','') and dt.table_name=t.table_name);
+prompt commit;;
+EOF
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "insert " $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes inserts to execute "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+typeset -u PARAM=`echo $4|cut -d. -f1`
+Local=$PARAM
+if [ -z "$PARAM" ]
+then
+        echo "Would you like to execute ? (Y/N) \c"; read Local
+fi
+
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors inserts executed with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

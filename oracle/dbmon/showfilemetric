@@ -1,0 +1,39 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+export SORT=$1
+
+if [ -z "$SORT" ]
+then
+        SORT=1
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 900 verify off line 132 feed off
+col d.tablespace_name for a30
+col AVERAGE_READ_TIME for 999.99
+col AVERAGE_WRITE_TIME for 999.99
+col PHYSICAL_READS for 999,999,999.99
+col PHYSICAL_WRITES for 999,999,999.99
+select
+    d.tablespace_name,
+    avg(m.AVERAGE_READ_TIME) AVERAGE_READ_TIME,
+    avg(m.AVERAGE_WRITE_TIME) AVERAGE_WRITE_TIME,
+    sum(m.PHYSICAL_READS) as PHYSICAL_READS,
+    sum(m.PHYSICAL_WRITES) as PHYSICAL_WRITES
+from 
+    v\$FILEMETRIC m,
+    dba_data_files d
+where
+    m.file_id=d.file_id
+group by tablespace_name        
+order by $SORT ;
+EOF

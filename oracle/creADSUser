@@ -1,0 +1,97 @@
+#!/bin/ksh 
+#==========================================================================================================
+# Script Name : creADSUser.sh <ORACLE_SID> <UserPrefix>
+#
+# Purpose     : This script creates ADS_SONAR_<prefix> user
+#
+#===========================================================================================================
+# Written by  : Anna A 
+# Date        : 08/01/2013
+#===========================================================================================================
+#~/.bash_profile > /dev/null
+
+usage()
+{
+   echo "Usage: $0 <ORACLE_SID> <UserPrefix>"
+   exit 1
+}
+
+checkUserExists()
+{
+	echo "set pages 0 lines 99 feedback off echo off
+	select username from dba_users where username = upper('${USER}');
+" | sqlplus -s  ota_tests/ota_tests@${ORACLE_SID}|grep ${USER}| wc -l| {
+while read out; do
+if (( $out == 0 ))
+then
+	export CHECK_USER=0
+else
+	export CHECK_USER=1
+fi
+done }
+
+}
+
+createUser()
+{
+	echo "set pages 0 lines 99 feedback off echo off
+	create user ${USER} identified by ${USER} 
+	default tablespace QC_DATA
+	temporary tablespace TEMP
+	quota unlimited on QC_DATA
+	PROFILE DEFAULT
+        ACCOUNT UNLOCK;
+" | sqlplus -s ota_tests/ota_tests@${ORACLE_SID} 
+
+}
+
+addGrants()
+{
+	echo "set pages 0 lines 99 feedback off echo off
+	GRANT CREATE SESSION,CREATE TABLE,CREATE VIEW,CREATE SYNONYM,CREATE SEQUENCE,
+	CREATE PROCEDURE,CREATE TRIGGER TO ${USER};
+" | sqlplus  ota_tests/ota_tests@${ORACLE_SID}
+
+}
+#----------------------------------------------------------------------#
+# Initializing Variables                                               #
+#----------------------------------------------------------------------#
+#check number of parameters
+if [ $# -lt 2 ]
+then
+	usage
+fi
+
+#set parameters
+export ORACLE_SID=$1
+export PREFIX=$2
+export USER=ADS_SONAR_${PREFIX}
+export CHECK_USER=0
+
+#set env parameters
+ORACLE_HOSTNAME=mydtbld0064.isr.hp.com; export ORACLE_HOSTNAME
+ORACLE_BASE=/u01/app/oracle; export ORACLE_BASE
+ORACLE_HOME=$ORACLE_BASE/product/11.2.0/dbhome_1; export ORACLE_HOME
+PATH=/usr/sbin:$PATH; export PATH
+PATH=$ORACLE_HOME/bin:$PATH; export PATH
+LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib; export LD_LIBRARY_PATH
+CLASSPATH=$ORACLE_HOME/jlib:$ORACLE_HOME/rdbms/jlib; export CLASSPATH
+
+
+#create user
+checkUserExists
+if [[ $CHECK_USER -eq 1 ]] 
+        then
+                echo "${tab} User ${USER} already exists in the Database $ORACLE_SID "
+                exit 1
+fi
+
+createUser
+addGrants
+checkUserExists
+if [[ $CHECK_USER -eq 1 ]] 
+        then
+                echo "${tab} User ${USER} created successfully in  $ORACLE_SID "
+else
+	echo "${tab} Creation of user ${USER} in $ORACLE_SID failed"
+fi

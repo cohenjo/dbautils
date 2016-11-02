@@ -1,0 +1,32 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showreflogs
+#
+#  By Adi Zohar - Apr 2008
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed off
+col snapshot_site for a30
+col num for 9999,999
+select snapshot_site, count(*) num from dba_registered_snapshots group by snapshot_site
+order by 1;
+
+prompt  
+prompt #######################################
+col global_name for a20
+select * from global_name;
+
+prompt  
+prompt #######################################
+prompt # Missing Snapshot Registered Locally # 
+prompt #######################################
+set feed on
+select owner,name from dba_snapshots
+minus
+select owner,name from dba_registered_snapshots where snapshot_site in (select * from global_name);
+
+EOF

@@ -1,0 +1,113 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: gencopyarchive std_machine std_sid sequence#
+#
+#  By Adi Zohar - dec 2007
+#*****************************************************************************
+
+prog=$0
+
+if [ $# -lt 1 ]
+then
+    echo "\nUsage  : ${prog} SEQUENCE [TO_SEQ]" 
+    echo "Example: ${prog} 1465 " 
+    echo "Example: ${prog} 1465 1470" 
+    exit 2
+fi
+
+SEQUENCE=$1
+typeset -u SEQ_TO=$2
+if [ -z "$SEQ_TO" ]
+then
+  SEQ_TO=$SEQUENCE
+fi
+
+#-----------------------------------------------------
+# Get standby information
+#-----------------------------------------------------
+echo "set echo off pages 0 feed off trimsp on lines 199
+        select substr(value,instr(value,'DB_UNIQUE_NAME=')+15) STANDBY from v\$parameter where name='log_archive_dest_2';
+" | sqlplus -s / | read STD_SID
+
+if [ -z "$STD_SID" ]
+then
+        echo "No Standby database configured with this machine , checked in log_archive_dest_2"
+        exit 1
+fi
+echo "Standby Database = $STD_SID"
+
+#-----------------------------------------------------
+# Get standby machine
+#-----------------------------------------------------
+grep "^${STD_SID}" /etc/tnsnames.ora | awk -F\= '{ print $6 }' | awk -F\) '{ print $1 }' | read STD_MACHINE
+
+if [ -z "$STD_MACHINE" ]
+then
+        echo "No Standby machine can be obtained for $SID_STD from tnsnames.ora"
+        exit 1
+fi
+echo "Standby Machine  = $STD_MACHINE"
+
+#---------------------------------------------
+# get DB and Inst parameters
+#---------------------------------------------
+echo "set echo off pages 0 feed off trimsp on lines 199
+        select d.name, a.instance_name, a.host_name, b.instance_name, b.host_name from 
+        gv\$instance a,gv\$instance b, v\$database d
+        where a.instance_number=1 and b.instance_number=2;
+" | sqlplus -s / | read DB_NAME ORA_SID1 ORA_HOST1 ORA_SID2 ORA_HOST2
+
+if [ -z "$ORA_SID1" ]
+then
+        export ORA_SID1=$ORACLE_SID
+        export ORA_SID2=$ORACLE_SID
+        export ORA_HOST1=`hostname`
+        export ORA_HOST2=`hostname`
+fi
+
+echo "Local Instances  = $DB_NAME $ORA_SID1 $ORA_HOST1 $ORA_SID2 $ORA_HOST2 \n"
+
+#---------------------------------------------
+# Loop on the archives            
+#---------------------------------------------
+echo "set echo off pages 0 feed off trimsp on lines 199
+      col name for a90
+      col name2 for a90
+      spool adi
+      select sequence#, name, replace(replace(replace(replace(name,'$ORA_SID1','$STD_SID') ,'$ORA_SID2','$STD_SID'),'$DB_NAME','$STD_SID'),'/arc/','/stdby_arc/') name2
+      from v\$archived_log where sequence# between $SEQUENCE and $SEQ_TO and rtrim(name)<>'$STD_SID';
+" | sqlplus -s / | while read CUR_SEQ LOG_FILE DEST_FILE 
+do
+
+        # check if the log already at standby machine
+        ssh -n $STD_MACHINE "file $DEST_FILE" | grep -v "cannot" |wc -l |read check_standby
+        if (( $check_standby == 1 ))
+        then
+                echo "Sequence $CUR_SEQ --> exist on standby machine, Skipping"
+        else 
+
+                # if Archive use TAR
+                if [ -a ${LOG_FILE}.gz ]
+                then
+                        echo "Sequence $CUR_SEQ --> Copying Zipped -> $LOG_FILE --> $DEST_FILE"
+                        cat ${LOG_FILE}.gz | ssh -c arcfour $STD_MACHINE "gunzip >$DEST_FILE"
+                        ssh -n $STD_MACHINE "/oravl01/oracle/dba/dbmon/gen_register_archive $STD_SID $DEST_FILE "
+                else 
+                        file ${LOG_FILE} | grep -v "not found" | wc -l |read check_log
+                        if (( $check_log == 1 ))
+                        then
+                                echo "Sequence $CUR_SEQ --> $LOG_FILE --> $DEST_FILE "
+                                scp -c arcfour $LOG_FILE $STD_MACHINE:$DEST_FILE
+                                ssh -n $STD_MACHINE "/oravl01/oracle/dba/dbmon/gen_register_archive $STD_SID $DEST_FILE "
+                        else
+                                echo " Skip $LOG_FILE "
+                        fi
+                fi
+        fi
+done
+
+wait 
+

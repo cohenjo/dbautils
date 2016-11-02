@@ -1,0 +1,40 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  Shows segments whose NEXT extent will not fit in the largest free space
+#
+#  USAGE: showextwarning
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+col owner           format A16
+col segment_name    format A20
+col segment_type    format A6         head 'Segmnt|type'
+col tablespace_name format A16        head 'Tablespace|name'
+col M1              format 9,999,999 head 'Largest Free(Kb)'
+col N1              format 9,999,999    head "Next extent(Kb)"
+break on tablespace_name
+prompt
+prompt "Segments whose NEXT extent will not fit in the largest free space"
+set linesize 130
+set pages 60
+
+select NEXT.owner
+      ,NEXT.segment_type
+      ,NEXT.segment_name
+      ,FREE.tablespace_name
+      ,FREE.Maxbyte/(1024) M1
+      ,next_extent/(1024) N1
+from ( select owner,segment_type,segment_name,tablespace_name,next_extent
+       from   sys.DBA_SEGMENTS                    ) NEXT
+    ,( select tablespace_name,max(bytes) Maxbyte
+       from   sys.DBA_FREE_SPACE
+       group by tablespace_name                   ) FREE
+where FREE.tablespace_name  = NEXT.tablespace_name
+and   NEXT.tablespace_name not like 'RBS%'
+and   NEXT.tablespace_name not like 'TEMP%'
+and   NEXT.next_extent  > FREE.Maxbyte
+order by tablespace_name,owner,segment_type,segment_name
+/
+EOF

@@ -1,0 +1,3 @@
+select pid, usename, application_name, client_addr, state, query
+from pg_stat_activity
+order by state;

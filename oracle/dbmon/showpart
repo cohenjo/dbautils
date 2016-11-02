@@ -1,0 +1,121 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/dbmon/showtable
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Kuen-Yih Chang (kchang@amdocs.com) shell
+#  AUTHOR          : Adi Zohar (adizo@amdocs.com) SQL
+#  DATE            : $Date: Tue Nov  5 21:56:55 CST 2002 $
+#
+#  This script is used to describe table definitions from sys objects 
+#  very fast on large database
+#
+#  USAGE: showtable owner.table_name
+#
+#*****************************************************************************
+
+typeset -u uid=`echo $1|cut -d. -f1`
+typeset -u tab=`echo $1|cut -d. -s -f2`
+if [ -z "$uid" ] 
+then
+  echo "Table owner: \c"; read uid
+fi
+if [ -z "$tab" ]
+then
+  echo "Table name:  \c"; read tab
+fi
+
+###########################################################################################################
+# Partitions   
+###########################################################################################################
+sqlplus -s "/ as sysdba" <<EOSQL
+col tablespace_name		for a23 trunc head TABLESPACE 
+col partition_name	trunc	for a29 head Partition
+col lob_name	trunc	for a10 head Partition
+col table_name		trunc	for a25
+col grant_to			for a25
+col index_name			for a32
+col DEGREE			for a3 trunc head Deg
+col INI_TRANS			for 99 head ITR
+col MAX_TRANS			for 999 head MTR 
+col PCT_FREE			for 99 head Fr
+col PCT_USED			for 99 head Us
+col p#				for 99 head "P#"
+col INITMB			for 999 head Init
+col NEXTMB			for 999 head Next
+col FREELISTS			for 99 head FLS
+col FREELIST_GROUPS		for 99 head FLG   
+col EXTENTS			for 9,999 head "Exts"
+col synony			for a66 head "Synonyms points to ${uid}.$tab "
+col Table_Size			for 999,999,999 head "${uid}.$tab Size (Mb) "
+col sizemb			for 999,999 head "Size Mb"
+col constraint_name		for a34
+col constraint_type		for a1  head T
+col status		trunc	for a3  head Sts
+col validated		trunc	for a5  head Valid
+col Reference		trunc	for a30 
+col SEARCH_CONDITION	trunc	for a30 
+
+set tab off trims on feedback off
+set pages 999 lines 200 trimsp on long 1000000
+
+prompt 
+prompt ****************************************************************************************************************************************
+prompt *                                                        Table Segments                                                                *
+prompt ****************************************************************************************************************************************
+compute sum of sizemb on table_name
+break on table_name nodup
+select 
+	   dt.table_name, 
+	   ds.partition_name,
+	   degree,
+	   dt.INI_TRANS, 
+	   dt.MAX_TRANS, 
+	   ds.freelists, 
+	   ds.freelist_groups, 
+	   ds.tablespace_name, 
+	   ds.initial_extent/1024/1024 initmb, 
+	   ds.next_extent/1024/1024 nextmb,
+	   ds.bytes/1024/1024 sizemb,
+	   ds.extents,
+	   dt.PCT_FREE,
+	   dt.pct_used
+from 
+	 dba_segments ds,
+	 dba_tables dt
+where
+	 ds.owner=dt.owner and
+	 ds.segment_name=dt.table_name and
+	 dt.owner='$uid' and
+	 dt.table_name='$tab' 
+order by 1,2;
+
+select     l.table_name,
+           lb.partition_name partition_name,
+           ds.partition_name lob_name,
+           null as degree,
+           null as INI_TRANS,
+           null as MAX_TRANS,
+           ds.freelists,
+           ds.freelist_groups,
+           ds.tablespace_name,
+           ds.initial_extent/1024/1024 initmb,
+           ds.next_extent/1024/1024 nextmb,
+           ds.bytes/1024/1024 sizemb,
+           ds.extents
+from
+    dba_segments ds,
+    dba_lobs l,
+    dba_lob_partitions lb
+where
+    ds.segment_name = l.segment_name and
+    ds.owner=l.owner and
+    l.owner='$uid' and
+    l.table_name='$tab' and
+    ds.owner=lb.table_owner (+) and
+    ds.partition_name = lb.lob_partition_name (+)
+    order by 1,2;
+
+quit
+EOSQL
+

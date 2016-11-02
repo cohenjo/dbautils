@@ -1,0 +1,25 @@
+#!/bin/ksh
+
+# Print script usage
+#
+Usage()
+{
+ printf "\n"
+ echo "Usage:\n  sdb tnsname"
+ printf "\n"
+}
+
+if [ $# -eq 0 ]
+then Usage
+        exit $OK
+fi
+
+HOST=`grep -i ^${1}= /etc/tnsnames.ora | head -1 | tr A-Z a-z | awk 'BEGIN{FS="host="}{print $2}' | cut -d\) -f1`
+
+if [ -z $HOST ] 
+then
+	printf "Hostname for given instance not found"
+	exit 1
+fi
+echo "Connecting to $HOST..."
+ssh $HOST

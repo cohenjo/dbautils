@@ -1,0 +1,70 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/bin/sqlarea
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Kuen-Yih Chang (kchang@amdocs.com)
+#  DATE            : $Date: Wed May  1 11:12:13 CDT 2002 $
+#
+#  This script is used to analyze sqlarea 
+#
+#  USAGE: sqlarea [ -c ] [ -d nn ] [ -l nn ]
+#
+#  Options: 
+#	-c: list only sql that associate with current sessions
+#	-d: list sql appears more than nn times; default 30
+#	-l: length to compare in sql_text for similarity; default 50
+#
+#  Example:
+#
+#*****************************************************************************
+
+outj="(+)"
+len=
+dup=
+while getopts cd:l: name
+do
+  case $name in
+  c)
+    outj="";;
+  d)
+    dup=$OPTARG;;
+  l)
+    len=$OPTARG;;
+  esac
+done
+
+shift $(($OPTIND -1))
+
+len=${len:-50}
+dup=${dup:-30}
+
+sqlplus -s "/ as sysdba" <<-EOSQL
+set pages 80 lines 120 
+col username for a10
+col osuser for a10
+col machine for a20
+col sql_text for a80
+col sqltxt for a$len
+col cnt for 99999
+col process for a9 fold_a
+select substr(sql_text,1,$len) sqltxt, count(*) cnt
+  from v\$sql c group by substr(sql_text,1,$len)
+  having count(*) > $dup  
+order by count(*) desc ;
+set pages 0
+-- break on username nodup on sid nodup on serial# nodup on machine nodup on osuser nodup on process nodup
+select 
+b.username, b.sid, b.serial#, b.machine, b.osuser, b.process, 
+a.address, a.hash_value, a.sql_text 
+from v\$sql a,
+v\$session b
+where
+    a.address = b.sql_address $outj
+and a.hash_value = b.sql_hash_value $outj
+and substr(a.sql_text,1,$len) in 
+( select substr(sql_text,1,$len) 
+  from v\$sql c group by substr(sql_text,1,$len)
+  having count(*) > $dup ) 
+;
+EOSQL

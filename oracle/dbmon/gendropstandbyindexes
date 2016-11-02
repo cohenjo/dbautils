@@ -1,0 +1,82 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate drop indexes for user
+#
+#  USAGE: gendropstandbyindex username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+TEMP_FILE=/tmp/genindexateuser_$$.sql
+TEMP_FILE_LOG=/tmp/genindexateuser_run_$$.sql
+HOST=`hostname`
+
+if echo $HOST | egrep -q "28"
+then
+        echo "Running on $HOST"
+else
+        echo "this script should run only on the standby machine - supr28 or suut28"
+        exit
+fi
+
+echo "
+set feed off verify off line 132 pages 0 echo off trimspo on
+alter database guard none;
+spool $TEMP_FILE
+select 'drop index '||owner||'.'||index_name||';'  
+from dba_indexes
+where 
+    (owner like '%_WORK%' or owner in ('REF_APPL')) and
+    uniqueness='NONUNIQUE' and 
+    index_name not like 'DR$%' and
+    owner not like '%ALFRESCO%'
+    or INDEX_NAME in ('OM_PURCHASED_OFFER_L5_5IX','OM_PURCHASED_OFFER_L5_6IX')
+union
+select 'drop index '||owner||'.'||index_name||';'  
+from dba_indexes i
+where 
+    (owner like '%_WORK%' or owner in ('REF_APPL')) and owner not like '%ALFRESCO%' and owner not in ('AUTHWORK','OP_WORK') and
+    uniqueness='UNIQUE' and
+    index_name not like 'SYS_IL%' and 
+    index_name not like '%_PK' and exists (select 1 from dba_indexes b where b.owner=i.owner and b.table_name=i.table_name and b.index_name like '%_PK') and
+    index_name not in ('CH_OBJECTS_1UQ','DE_CONDITIONS_1UQ','DE_CRI_POOL_1UQ','DE_DP_COMPONENTS_1UQ')
+order by 1;
+" | sqlplus -s "/ as sysdba" > /dev/null
+
+#--------------------------------------------------------------------------------------------
+head -n 10 $TEMP_FILE
+echo "..."
+
+num_of_changes=`egrep "alter|drop" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes objects to drop "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+typeset -u PARAM=`echo $2|cut -d. -f1`
+Local=$PARAM
+if [ -z "$PARAM" ]
+then
+	echo "Would you like to execute ? (Y/N) \c"; read Local
+fi
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+        set term off
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors dropped with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

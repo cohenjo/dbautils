@@ -1,0 +1,109 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/bin/getsql
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Kuen-Yih Chang (kchang@amdocs.com)
+#  Add             : Adi Zohar
+#  DATE            : $Date: Wed Aug 14 12:28:25 CDT 2002 $
+#
+#  This script is used to show sql from v$sqltext
+#
+#  USAGE: getsql hash_value
+#
+#*****************************************************************************
+
+hash=$1
+until [ ! -z "$hash" ]
+do
+  echo "Enter sql_id: \c"; read hash
+done
+
+echo "
+set verify off line 199 feed off pages 300
+col last_active_time for a17
+col sql_id for a14
+col executions for 9,999,999
+col log_read for 9,999,999.9 
+col rows_read for 999,999 
+col elapsed_sec for 9,999.9 
+col module for a50 trunc
+
+alter session set nls_date_format='DD/MM/YY HH24:MI:SS';
+
+select 
+    last_active_time,
+    sql_id,
+    executions,
+    round(buffer_gets/executions,1) log_read,
+    round(rows_processed/executions,1) rows_read,
+    round(elapsed_time/executions/1000000,1) elapsed_sec,
+    module
+from v\$sqlarea where sql_id='$hash'
+order by 1 desc,2;
+" | sqlplus -s "/ as sysdba" 
+
+echo "---------------------------------------------------------------------------------------------------------------------------------"
+
+echo "
+set pages 0 head off feed off lines 64 trim off
+select sql_text
+from v\$sqltext
+where sql_id='$hash'
+order by piece;
+" | sqlplus -s "/ as sysdba" | awk '{printf("%s",$0)}'
+
+echo ""
+echo "
+set pages 0 feed off lines 300 trimsp on  
+prompt  
+SELECT * FROM TABLE(dbms_xplan.display_awr('$hash')) a
+where 
+    plan_table_output not like '%cpu costing is off%' and
+    plan_table_output not like '-----' and
+    plan_table_output not like 'Note' and
+    plan_table_output not like '%Plan hash value%' and
+    plan_table_output not like '%An uncaught error%' and
+    plan_table_output not like '--------------------' and
+    plan_table_output not like 'SQL_ID%' and
+    length(trim(plan_table_output))> 0
+    ;
+prompt  
+col bind_name for a20 
+col value_string for a30 trunc
+col datatype for a16 trunc
+col last_captured for a18
+set pages 1000 trimsp on 
+
+select name as bind_name, '#'|| value_string||'#' as value_string, DATATYPE_STRING datatype, to_char(last_captured,'DD/MM/YY HH24:MI') last_captured
+from  v\$sql_bind_capture 
+where sql_id='$hash' and CHILD_NUMBER=(select max(CHILD_NUMBER) from v\$sql_bind_capture  where sql_id='$hash')
+order by POSITION;
+
+select name as name,'#'|| value_string||'#' as value_string, DATATYPE_STRING datatype, to_char(last_captured,'DD/MM/YY HH24:MI') last_captured
+from  dba_hist_sqlbind 
+where 
+    sql_id='$hash' 
+    and snap_id=(select max(snap_id) from dba_hist_sqlbind where sql_id='$hash') 
+    and not exists (select 1 from v\$sql_bind_capture where sql_id='$hash')
+order by POSITION;
+
+col SID         for 99999 trunc
+col inst_id     for 9 trunc
+col serial#     for 99999 trunc         head SER#
+col username    for a25
+col osuser      for a10 trunc
+col status      for a3 trunc
+col machine     for a17 trunc
+col process     for a9 trunc            head Process
+col spid        for a6 trunc            head Shadow
+col program     for a30 trunc           head Program
+col logon_time  for a16
+
+SELECT sess.inst_id, sess.sid, sess.serial#, sess.username, substr(osuser,1,10) osuser,
+       status, sess.process, proc.spid, sess.machine, sess.program, to_char(logon_time,'DD/MM/YYYY HH24:MI') logon_time
+FROM gv\$session sess,  gv\$process proc
+WHERE sess.inst_id=proc.inst_id (+)  and sess.sql_id='$hash'
+AND   sess.paddr=proc.addr (+)
+ORDER BY 4,1,2,3 ;
+" | sqlplus -s "/ as sysdba" 

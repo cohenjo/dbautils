@@ -1,0 +1,29 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: genregisterlog std_machine std_sid sequence#
+#
+#  By Adi Zohar - dec 2007
+#*****************************************************************************
+
+prog=$0
+
+if [ $# -ne 2 ]
+then
+    echo "\nUsage  : ${prog} ORACLE_SID LOG" 
+    echo "Example: ${prog} RPTPR2 /oravlarc/ORACLE/RPTPR2/arch_n1_RPTPR2_i636640683_2223.arc " 
+    exit 2
+fi
+
+SID=$1
+LOG=$2
+
+~/.profile
+export ORACLE_SID=$SID
+
+sqlplus -s / <<EOF 
+ALTER DATABASE REGISTER LOGICAL LOGFILE '$LOG';
+EOF
+

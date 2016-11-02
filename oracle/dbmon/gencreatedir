@@ -1,0 +1,21 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show dir        
+#
+#  USAGE: showdir
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set lines 190 pages 100
+col owner format a20
+col directory_name format a30
+col directory_path format a100
+create or replace directory EXP_DIR as '/oravl09/ORACLE/$ORACLE_SID/export';
+create or replace directory DATA_PUMP_DIR as '/oravl09/ORACLE/$ORACLE_SID/export';
+select owner,directory_name,directory_path
+from dba_directories;
+EOF
+

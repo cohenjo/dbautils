@@ -1,0 +1,50 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show objects fragmentation on a tablespace 
+#
+#  USAGE: findtab table
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+export NAME=`echo $1|tr [a-z] [A-Z]`
+if [ -z "$NAME" ] 
+then
+  echo "Table must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 152
+column tablespace_name format a22 head TABLESPACE
+column table_name format a30
+column blocks format 999
+column empty_blocks head empty format 9,999
+column max_extents head 'max|ext' format 9,999
+column initial_extent head 'init|ext MB' format 9,999
+column next_extent head 'next|ext MB' format 9,999
+column owner format a28
+column type for a5
+column mb head 'Size MB' format 999,999
+column rows_from_stats for 999,999,999,999
+select dt.owner, table_name,  min(num_rows) rows_from_stats, count(*) partitions, max(ds.tablespace_name) as tablespace_name, min(to_char(last_analyzed, 'dd/MON/yyyy hh24:mi:ss')) LAST_ANALYZED, 'TAB' as type, sum(ds.bytes/1024/1024) mb
+from  dba_tables dt, dba_segments ds
+where 
+	table_name like upper('%${NAME}%')
+	and ds.segment_name=dt.table_name 
+	and ds.owner=dt.owner
+group by dt.owner, table_name
+union all
+select /*+ use_hash(dt,ds) */ dt.owner, dt.table_name,  null as rows_from_stats, count(*) partitions, max(dt.tablespace_name) as tablespace_name, null as LAST_ANALYZED, 'LOB' as TYPE, sum(ds.bytes/1024/1024) mb
+from  dba_lobs dt, dba_segments ds
+where 
+	dt.table_name like upper('%${NAME}%')
+        and ds.segment_name=dt.SEGMENT_NAME 
+        and ds.owner=dt.owner
+group by dt.owner, dt.table_name
+order by table_name, owner, type desc;
+EOF

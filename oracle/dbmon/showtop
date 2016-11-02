@@ -1,0 +1,221 @@
+#!/bin/ksh 
+
+######################################################################
+# Script:    showtop
+# Author:    Adi Zohar
+#
+#######################################################################
+
+#########################################################################
+# Print script usage
+#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                 | Help"
+ echo " -l       [hours=4] | Logical Reads for the last X hours"
+ echo " -pr      [hours=4] | Phisical Reads for last X hours"
+ echo " -pw      [hours=4] | Phisical Writes for the last X hours"
+ echo ""
+ echo " -tl      [hours=4] | Per table - Logical Reads for the last X hours"
+ echo " -tpr     [hours=4] | Per table - Phisical Reads for last X hours"
+ echo " -tpw     [hours=4] | Per table - Phisical Writes for the last X hours"
+ echo "       }\n"
+ printf "\n"
+}
+
+
+########################
+# Active Connections
+########################
+Physical()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize 200 feed off
+column owner format a15 trunc
+column Table_name format a30
+column object_name format a30
+column object_type format a10 trunc
+column logical_reads format 9999999999
+column physical_reads format 9999999999
+column physical_writes format 9999999999
+column logic_rd_ro format 9999 head "LOG|RATIO"
+column phys_rd_ro format 9999 head "PHY|RATIO"
+column phys_wr_ro format 9999 head "WRI|RATIO"
+
+select * from
+(
+  SELECT n.owner,
+         CASE
+            WHEN n.object_type = 'TABLE'
+            THEN
+               n.object_name
+            WHEN n.object_type = 'INDEX'
+            THEN
+               (SELECT table_name
+                  FROM dba_indexes
+                 WHERE index_name = n.object_name AND owner = n.owner)
+            WHEN n.object_type = 'LOB'
+            THEN
+               (SELECT table_name
+                  FROM dba_lobs
+                 WHERE segment_name = n.object_name AND owner = n.owner)
+            ELSE
+               'N/A'
+         END
+            AS Table_name,
+         n.object_name,
+         n.object_type,
+         r.logical_reads,
+         ROUND (r.logical_reads_ratio * 100, 2) logic_rd_ro,
+         r.physical_reads,
+         ROUND (r.physical_reads_ratio * 100, 2) phys_rd_ro,
+         r.physical_writes,
+         ROUND (r.physical_writes_ratio * 100, 2) phys_wr_ro
+    FROM dba_hist_seg_stat_obj n, (SELECT *
+                                     FROM (  SELECT e.dataobj#,
+                                                    e.obj#,
+                                                    e.dbid,
+                                                    SUM (e.logical_reads_delta) logical_reads,
+                                                    ratio_to_report (SUM (e.logical_reads_delta)) OVER () logical_reads_ratio,
+                                                    SUM (e.physical_reads_delta) physical_reads,
+                                                    ratio_to_report (SUM (e.physical_reads_delta)) OVER () physical_reads_ratio,
+                                                    SUM (e.physical_writes_delta) physical_writes,
+                                                    ratio_to_report (SUM (e.physical_writes_delta)) OVER () physical_writes_ratio
+                                               FROM dba_hist_seg_stat e, (  SELECT MIN (snap_id) min_snap_id,
+                                                                                   MAX (snap_id) max_snap_id,
+                                                                                   MIN (INSTANCE_NUMBER) INSTANCE_NUMBER,
+                                                                                   dbid
+                                                                              FROM dba_hist_snapshot
+                                                                             WHERE BEGIN_INTERVAL_TIME > SYSDATE - ($HOURS / 24) 
+                                                                          GROUP BY dbid) t1
+                                              WHERE e.snap_id >= t1.min_snap_id AND e.snap_id <= t1.max_snap_id
+                                           GROUP BY e.dataobj#, e.obj#, e.dbid
+                                             HAVING SUM (e.logical_reads_delta) > 0 OR SUM (e.physical_reads_delta) > 0 OR SUM (e.physical_writes_delta) > 0
+                                           ORDER BY logical_reads DESC) d) r
+   WHERE n.dataobj# = r.dataobj# AND n.obj# = r.obj# AND n.dbid = r.dbid  
+and n.owner like '${USER_NAME}'
+ORDER BY $SORT DESC
+) where rownum<35;
+SQL
+echo ""
+echo "Ordered by $SORT, for the last $HOURS hours at `date`"
+}
+
+Table()
+{
+sqlplus -s "/ as sysdba" <<ESQL
+set linesize 200 feed off
+column owner format a15 trunc
+column Table_name format a30
+column object_name format a30
+column object_type format a10 trunc
+column logical_reads format 9999999999
+column physical_reads format 9999999999
+column physical_writes format 9999999999
+column logic_rd_ro format 9999 head "LOG|RATIO"
+column phys_rd_ro format 9999 head "PHY|RATIO"
+column phys_wr_ro format 9999 head "WRI|RATIO"
+
+select * from 
+(
+  SELECT owner,
+         table_name,
+         SUM (logical_reads) AS logical_reads  ,
+         SUM (logical_reads_ratio) AS logic_rd_ro ,
+         SUM (physical_reads) AS physical_reads,
+         SUM (physical_reads_ratio) AS phys_rd_ro  ,
+         SUM (physical_writes) AS physical_writes  ,
+         SUM (physical_writes_ratio) AS phys_wr_ro             
+    FROM (SELECT n.owner,
+                 CASE
+                    WHEN n.object_type = 'TABLE'
+                    THEN
+                       n.object_name
+                    WHEN n.object_type = 'INDEX'
+                    THEN
+                       (SELECT table_name
+                          FROM dba_indexes
+                         WHERE index_name = n.object_name AND ROWNUM = 1)
+                    WHEN n.object_type = 'LOB'
+                    THEN
+                       (SELECT table_name
+                          FROM dba_lobs
+                         WHERE segment_name = n.object_name)
+                    ELSE
+                       'N/A'
+                 END
+                    AS Table_name,
+                 n.object_name,
+                 n.object_type,
+                 r.logical_reads,
+                 ROUND (r.logical_reads_ratio * 100, 2) logical_reads_ratio,
+                 r.physical_reads,
+                 ROUND (r.physical_reads_ratio * 100, 2) physical_reads_ratio,
+                 r.physical_writes,
+                 ROUND (r.physical_writes_ratio * 100, 2) physical_writes_ratio
+            FROM dba_hist_seg_stat_obj n, (SELECT *
+                                             FROM (  SELECT e.dataobj#,
+                                                            e.obj#,
+                                                            e.dbid,
+                                                            SUM (e.logical_reads_delta) logical_reads,
+                                                            ratio_to_report (SUM (e.logical_reads_delta)) OVER () logical_reads_ratio,
+                                                            SUM (e.physical_reads_delta) physical_reads,
+                                                            ratio_to_report (SUM (e.physical_reads_delta)) OVER () physical_reads_ratio,
+                                                            SUM (e.physical_writes_delta) physical_writes,
+                                                            ratio_to_report (SUM (e.physical_writes_delta)) OVER () physical_writes_ratio
+                                                       FROM dba_hist_seg_stat e, (  SELECT MIN (snap_id) min_snap_id,
+                                                                                           MAX (snap_id) max_snap_id,
+                                                                                           MIN (INSTANCE_NUMBER) INSTANCE_NUMBER,
+                                                                                           dbid
+                                                                                      FROM dba_hist_snapshot
+                                                                                     WHERE BEGIN_INTERVAL_TIME > SYSDATE - $HOURS /24
+                                                                                  GROUP BY dbid) t1
+                                                      WHERE e.snap_id >= t1.min_snap_id AND e.snap_id <= t1.max_snap_id
+                                                   GROUP BY e.dataobj#, e.obj#, e.dbid
+                                                     HAVING SUM (e.logical_reads_delta) > 0 OR SUM (e.physical_reads_delta) > 0 OR SUM (e.physical_writes_delta) > 0
+                                                   ORDER BY logical_reads DESC) d) r
+           WHERE n.dataobj# = r.dataobj# AND n.obj# = r.obj# AND n.dbid = r.dbid 
+           and n.owner like '$USER_NAME'
+         ) c
+GROUP BY owner, table_name
+ORDER BY 3 DESC
+) where rownum<35;
+ESQL
+echo ""
+echo "Ordered by $NAME, for the last $HOURS hours at `date`"
+}
+
+
+#########################################################################
+# MAIN
+#
+if [ $# -eq 0 ]
+then Usage
+	exit $OK
+fi 
+
+HOURS=$2                                          
+if [ -z "$HOURS" ] 
+then
+	export HOURS=4
+fi
+typeset -u USER_NAME=`echo $3|cut -d. -f1`
+if [ -z "$USER_NAME" ] 
+then
+	export USER_NAME="%"
+fi
+
+case $1 in
+    -pr   ) export SORT=" r.physical_reads"; Physical ;;
+    -pw   ) export SORT=" r.physical_writes"; Physical ;;
+    -l    ) export SORT=" r.logical_reads"; Physical ;;
+    -tpr   ) export SORT=" 5"; export NAME="physical_reads"; Table ;;
+    -tpw   ) export SORT=" 7"; export NAME="physical_writes"; Table ;;
+    -tl    ) export SORT=" 3"; export NAME="logical_reads"; Table ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR 
+           ;;
+  esac

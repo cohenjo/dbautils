@@ -1,0 +1,11 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to generate database links for the instance
+#
+#  USAGE: getpas 
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+cat -s ~/adm/$ORACLE_SID/create/*/alt_user_password.sql |  awk '{ print $3 "     \t " $6 }' | grep -i "$1" 

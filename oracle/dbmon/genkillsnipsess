@@ -1,0 +1,25 @@
+#!/bin/ksh
+if [ $# != 1 ]; then
+echo " "
+      echo "Usage : `basename $0` SID"
+echo " "
+exit 1
+fi
+
+. ~/.profile
+export ORACLE_SID=$1
+
+tmpfile=/tmp/tmp.$$
+sqlplus -s / <<EOF
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $tmpfile
+select p.spid from v\$process p,v\$session s
+where s.paddr=p.addr
+and s.status='SNIPED';
+spool off
+EOF
+for x in `cat $tmpfile | grep "^[0123456789]"`
+do
+kill -9 $x
+done
+rm -f $tmpfile

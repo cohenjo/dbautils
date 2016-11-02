@@ -1,0 +1,34 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+export USER=$1   
+sqlplus "/ as sysdba" <<EOF
+set line 199 pages 0 echo on trimspo on
+
+revoke ALTER ANY SEQUENCE         from $USER ;
+revoke ALTER ANY TABLE            from $USER ;
+revoke CREATE ANY DIRECTORY       from $USER ;
+revoke CREATE ANY SYNONYM         from $USER ;
+revoke CREATE SYNONYM             from $USER ;
+revoke DELETE ANY TABLE           from $USER ;
+revoke DROP ANY DIRECTORY         from $USER ;
+revoke DROP ANY SYNONYM           from $USER ;
+revoke EXECUTE ANY PROCEDURE      from $USER ;
+revoke INSERT ANY TABLE           from $USER ;
+revoke SELECT ANY SEQUENCE        from $USER ;
+revoke UNDER ANY TABLE            from $USER ;
+revoke UPDATE ANY TABLE           from $USER ;
+revoke ALTER SYSTEM               from $USER ;
+reovke execute on dbms_stats      from $USER ;
+revoke resource                   from $USER ;
+revoke CONNECTOR_ROLE             from $USER ;
+revoke CREATE DATABASE LINK       from $USER ;
+revoke lock any table             from $USER ;
+
+EOF

@@ -1,0 +1,47 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show all datafiles for 8i
+#
+#  USAGE: showallfiles8i
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+sqlplus -s "/ as sysdba" <<EOF
+set line 160
+set pagesize 1000
+set echo off
+set feedback off
+set verify off
+
+column name format a60
+column filename format a70
+column file# format 9999
+column MB format 9,999,999
+column status for a9 truncate
+column file_id for 999 head Id
+column tablespacE_name for a20
+
+break on report
+
+compute sum of MB on report
+
+select file# as file_id, substr(d.name,1,70) As filename  ,bytes/1024/1024 As Mb,'data' as type,t.name tablespace_name, status, enabled
+from v\$datafile d, v\$tablespace t
+where d.ts#=t.ts#
+union
+select file# as file_id, substr(d.name,1,70) As filename  ,bytes/1024/1024 As Mb,'temp' as type,t.name tablespace_name, status, enabled
+from v\$tempfile d, v\$tablespace t
+where d.ts#=t.ts#
+union
+select null as file_id, substr(a.member,1,70) as filename   , bytes/1024/1024 as Mb,'redo' as type,  'LOG' as tablepsace_name, l.status, null as enabled
+from v\$logfile a, v\$log l 
+where a.group#=l.group#
+union 
+select null as file_id , substr(name,1,70) as filename, block_size*file_size_blks/1024/1024 as Mb, 'r-control' as type, 'CONTROL' as tablespace_name, null as status, null as enabled
+from v\$controlfile
+order by type, 2
+/
+
+EOF

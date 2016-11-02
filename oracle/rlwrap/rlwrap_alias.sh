@@ -1,0 +1,2 @@
+
+alias sqlplus='rlwrap sqlplus'

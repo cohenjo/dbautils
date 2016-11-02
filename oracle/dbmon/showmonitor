@@ -1,0 +1,33 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed on  
+column TABLE_NAME format a20 trunc
+column INDEX_NAME format a25 trunc
+column MONITORING format a3 trunc
+column USED format a4 trunc
+column START_MONITORING format a19 trunc
+column END_MONITORING format a19 trunc
+column admin_option heading admin format a8
+   SELECT u.name  owner,
+          io.name index_name,
+          t.name  table_name,
+          DECODE (BITAND (i.flags, 65536), 0, 'NO', 'YES') monitoring,
+          DECODE (BITAND (ou.flags, 1), 0, 'NO', 'YES') used,
+          ou.start_monitoring,
+          ou.end_monitoring
+     FROM sys.obj\$ io,
+          sys.obj\$ t,
+          sys.ind\$ i,
+          sys.object_usage ou,
+          sys.user\$ u
+    WHERE i.obj# = ou.obj# AND io.obj# = ou.obj# AND t.obj# = i.bo# and u.user#=io.owner#;
+EOF

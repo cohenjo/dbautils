@@ -1,0 +1,28 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show tmp tables
+#
+#  USAGE: showtmptables
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed off
+column owner format a20
+column object_name format a40
+column created format a18 
+select 
+    owner, object_name, to_char(created ,'DD-MON-YYYY HH24:MI') created
+from 
+    dba_objects o 
+where 
+    o.owner like '%USER%' and  
+    object_name not like 'WLI%' and 
+    object_name not like 'JPD%' and 
+    object_name not like '%JMS%' and
+    object_type in ('TABLE')
+order by owner,created    
+;
+EOF

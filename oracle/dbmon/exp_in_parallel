@@ -1,0 +1,63 @@
+#!/usr/bin/sh
+prog=$0
+
+today=`date +%Y%m%d`
+#---------------------------------------
+# Input parameters
+#---------------------------------------
+export ORACLE_SID=$1
+export datFile=$2
+export parallelNum=$3
+export dmpDir=$4
+
+#---------------------------------------
+# Check parameter validations
+#---------------------------------------
+if [ $# -ne 4 ] 
+then
+     echo "Usage: ${prog} db_name dat_file parallel_num dump_dir"
+     exit 1
+fi
+
+if ! grep -i $ORACLE_SID /etc/oratab > /dev/null 2>&1
+then
+     echo "<${prog}>: ORACLE_SID $ORACLE_SID does not exist in /etc/oratab."
+     exit 1
+fi
+
+if [ ! -r $datFile ] 
+then
+     echo "<${prog}>: dat file: $datFile is not readable or does not exist."
+     exit 1
+fi
+
+if [ $parallelNum -le 1 -o  $parallelNum -gt 64 ]
+then
+     echo "<${prog}>: parallel degree needs to be between 1 and 64."
+     exit 1
+fi
+
+if [ ! -d $dmpDir ]
+then
+     echo "<${prog}>: parallel degree needs to be between 1 and 64."
+     exit 1
+fi
+
+#---------------------------------------
+# Main
+#---------------------------------------
+cat $datFile | while read tb
+do
+    while true
+    do
+        if [ `jobs | grep -i running | wc -l ` -ge $parallelNum ]
+        then
+            sleep 10
+        else
+          gzexp / file=$dmpDir/exp_${tb}.dmp log=$dmpDir/exp_${tb}.log tables=$tb direct=y compress=n & 
+          break
+        fi
+    done
+
+done
+wait

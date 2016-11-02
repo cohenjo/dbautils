@@ -1,0 +1,26 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show dir        
+#
+#  USAGE: showdir
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ]
+then
+  echo "File system Number (i.e. 03) : \c"; read NAME
+fi
+  
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set lines 190 pages 100
+col owner format a20
+col directory_name format a30
+col directory_path format a100
+create or replace directory ORAVL${NAME}_DIR as '/oravl${NAME}/ORACLE/$ORACLE_SID/export';
+select owner,directory_name,directory_path
+from dba_directories;
+EOF
+

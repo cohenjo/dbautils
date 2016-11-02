@@ -1,0 +1,18 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showtmpsegments
+#
+#  By Adi Zohar - Feb 2009
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed off
+column tablespace_name format a20
+column MB format 999,999,999
+select tablespace_name, sum(bytes)/1024/1024 MB from dba_segments where segment_type like '%TEMPO%' 
+group by tablespace_name 
+order by 1;
+EOF

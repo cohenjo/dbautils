@@ -1,0 +1,78 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gendropuser oracle_sid username Y/N(run or not)
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+usage()
+{
+   echo "Usage: $0 <ORACLE_SID> <UserName> <Y(execute)/N(generate only)>"
+   exit 1
+}
+
+if [ $# -lt 3 ]
+then
+        usage
+fi
+
+ORACLE_SID=$1; export ORACLE_SID
+NAME=$2
+
+TEMP_FILE=/tmp/gentruncateuser_$$.sql
+TEMP_FILE_LOG=/tmp/gentruncateuser_run_$$.sql
+ORACLE_HOSTNAME=mydtbld0064.isr.hp.com; export ORACLE_HOSTNAME
+ORACLE_BASE=/u01/app/oracle; export ORACLE_BASE
+ORACLE_HOME=$ORACLE_BASE/product/11.2.0/dbhome_1; export ORACLE_HOME
+
+PATH=/usr/sbin:$PATH; export PATH
+PATH=$ORACLE_HOME/bin:$PATH; export PATH
+
+LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib; export LD_LIBRARY_PATH
+CLASSPATH=$ORACLE_HOME/jlib:$ORACLE_HOME/rdbms/jlib; export CLASSPATH
+
+
+echo "set termout off trimspo on lines 199 feed off pages 0 echo off 
+spool $TEMP_FILE
+select 'drop user '||username||' '||' cascade;' from dba_users where username='$NAME';
+spool off
+" | sqlplus -s "/ as sysdba" > /dev/null
+
+#--------------------------------------------------------------------------------------------
+head -n 10 $TEMP_FILE
+echo "..."
+
+num_of_users=`grep -i "drop" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_users to drop "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_users==0 ))
+then
+	echo "Removing file..."
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+typeset -u PARAM=`echo $3|cut -d. -f1`
+Local=$PARAM
+
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "Dropping user $NAME..."
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors users dropped with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG
+

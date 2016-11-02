@@ -1,0 +1,152 @@
+#!/bin/sh
+##############################################
+# gen_create_index_base_uat OWNER TABLE_NAME #
+##############################################
+if [ $# -lt 3 ]
+then
+        echo "\nUsage  : $0 {OWNER} {TABLE} {DATABASE} [ONLY_PK]"
+        echo "Example: $0 DLV_WORK BC_PRODUCT IAMPR41         # - All indexes"     
+        echo "Example: $0 DLV_WORK BC_PRODUCT IAMPR41 ONLY_PK # - only the PK"
+        exit 1
+fi
+
+typeset -u OWNER=`echo $1|cut -d. -f1`
+typeset -u TABLE=`echo $2|cut -d. -f1`
+typeset -u SID=`echo $3|cut -d. -f1`
+export ONLY_PK=$4
+
+export TEMP_UNSUABLE_INDEX=/oravl01/oracle/dba/LOGS/gen_create_index_base_unsuable_${TABLE}_$$.sql
+export TEMP_BUILD_INDEX=/oravl01/oracle/dba/LOGS/gen_create_index_base_script_${TABLE}_$$.sql
+export TEMP_BUILD_LOG=/oravl01/oracle/dba/LOGS/gen_create_index_base_script_${TABLE}_$$.log
+export UAT_MACHINE=suut06
+export UAT_DB=IAMUT4
+
+###########################
+# Variables                
+###########################
+export ORACLE_VERSION=10.2.0
+export ORACLE_BASE=/oravl01/oracle
+export ORACLE_DIR=${ORACLE_BASE}
+export ORACLE_HOME=${ORACLE_BASE}/${ORACLE_VERSION}
+export ORA_CRS_HOME=${ORACLE_BASE}/${ORACLE_VERSION}_CRS
+export COBDIR=/opt/cobol_4.0_express
+export COBLIB=$COBDIR/lib
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$COBDIR/lib:/usr/lib
+export MANPATH=/usr/man:/usr/contrib/man:/usr/local/man
+export SHLIB_PATH=$COBDIR/lib:$ORACLE_HOME/lib32:/usr/lib
+export CDPATH=.:$ORACLE_DIR:$ORACLE_DIR/dba:$ORACLE_DIR/adm/$ORACLE_SID:$ORACLE_DIR/util:$ORACLE_HOME:$ORACLE_DIR/app
+export PATH=$ORACLE_HOME/bin:/usr/ccs/bin:/usr/bin:$COBDIR/bin:/etc:/usr/bin/X11:/opt/gzip/bin:$ORACLE_MON:/usr/contrib/bin:/opt/omni/bin:/usr/bin/make:/opt/java1.4:/opt/java1.4/bin:/usr/local/bin:/usr/sbin:/bin:/sbin:/opt/perf/bin:$ORACLE_UTIL:/opt/mozilla/:$ORA_CRS_HOME/bin:$ORACLE_HOME/OPatch:.
+export ORA_NLS33=$ORACLE_HOME/ocommon/nls/admin/data
+export NLS_LANG=AMERICAN_AMERICA.WE8ISO8859P1
+export ORACLE_SID=$SID
+
+echo "Running on $ORACLE_SID $ONLY_PK"
+
+###########################
+# Check Table exist        
+###########################
+LOG=/tmp/index_$$.log
+
+echo "set echo off pages 0 lines 199 trimsp on feed off
+spool $LOG
+select count(*) from dba_tables where owner='${OWNER}' and table_name='${TABLE}';
+" | $ORACLE_HOME/bin/sqlplus -s "/ as sysdba" | read TABLE_EXIST
+
+if (( `cat $LOG | grep ORA- |  wc -l` > 0 ))
+then 
+        echo "Error accessing instance $ORACLE_SID "
+        rm -f $LOG
+        exit 1
+fi
+rm -f $LOG
+
+if (( $TABLE_EXIST == 0 )) 
+then
+        echo "\nError, Table ${OWNER}.${TABLE} not exists in $ORACLE_SID, abort"
+        exit 1
+fi
+
+###########################
+# Compile unusable indexes 
+###########################
+echo "set echo off pages 0 lines 199 trimsp on feed off
+spool $TEMP_UNSUABLE_INDEX
+select 'alter index '||owner||'.'||index_name||' rebuild parallel 48 nologging;'||chr(10)||'alter index '||owner||'.'||index_name||' noparallel logging;' 
+from dba_indexes di where table_name='${TABLE}' and owner='${OWNER}' and not exists (select '' from dba_ind_partitions dip where dip.index_name=di.index_name and dip.index_owner=di.owner) and status != 'VALID';
+
+select 'alter index '||index_owner||'.'||index_name||' nologging;'||chr(10)|| 'alter index '||index_owner||'.'||index_name||' rebuild partition '||partition_name||' parallel 48 ;'||chr(10)||'alter index '||index_owner||'.'||index_name||' noparallel logging;' 
+from dba_ind_partitions where status != 'USABLE' and index_owner='${OWNER}' and index_name in (select index_name from dba_indexes where table_name='${TABLE}' and owner='${OWNER}');
+spool off
+" | $ORACLE_HOME/bin/sqlplus -s "/ as sysdba" |grep ORA- |wc -l |read SQL_ERROR
+
+if (( $SQL_ERROR > 0 )) 
+then
+        echo "Failed to check Unsuable Indexes for ${OWNER}.${TABLE} "
+        cat $TEMP_UNSUABLE_INDEX
+        rm -f $TEMP_UNSUABLE_INDEX
+        exit 1
+fi
+
+if [ "$ONLY_PK" = "ONLY_PK" ]
+then
+        tmp_script=/tmp/build_on_uat_$$.sql
+        cat $TEMP_UNSUABLE_INDEX | grep "_PK" > $tmp_script
+        cat $tmp_script > $TEMP_UNSUABLE_INDEX
+        rm -f $tmp_script
+fi
+###########################
+# Generate Script from UAT
+###########################
+ssh -n oracle@${UAT_MACHINE} ". ~/.profile; export ORACLE_SID=${UAT_DB}; gen_db_indexes -screen ${OWNER} ${TABLE} ${ONLY_PK} " > $TEMP_BUILD_INDEX
+INDEX_TO_BUILD=`cat $TEMP_BUILD_INDEX | grep "CREATE" | wc -l`
+
+if (( $INDEX_TO_BUILD == 0 ))
+then
+        echo "!!! Failed to generate index from IAMUT4 for ${OWNER}.${TABLE} "
+        cat $TEMP_BUILD_INDEX 
+        exit 1
+        rm -f $TEMP_BUILD_INDEX
+        rm -f $TEMP_UNSUABLE_INDEX
+fi
+chmod 700 $TEMP_BUILD_INDEX
+chmod 700 $TEMP_UNSUABLE_INDEX
+
+echo "#########################################################################################"
+echo "`cat $TEMP_UNSUABLE_INDEX | grep rebuild | wc -l` unsuable Indexes/Partitions to rebuild "
+echo "$INDEX_TO_BUILD Indexes to Build using UAT script "
+echo "#########################################################################################"
+echo "Would you like to execute ? (Y/N) \c"; read Local
+typeset -u LocalUpper=$Local
+if [ ! "$LocalUpper" = "Y" ]
+then
+        rm -f $TEMP_BUILD_INDEX
+        rm -f $TEMP_UNSUABLE_INDEX
+        exit 0
+fi
+
+$ORACLE_HOME/bin/sqlplus '/ as sysdba' <<EOF
+set echo on lines 199 trimsp on feed on time on timing on 
+spool $TEMP_BUILD_LOG
+@$TEMP_UNSUABLE_INDEX
+@$TEMP_BUILD_INDEX
+spool off
+EOF
+echo "#########################################################################################"
+
+if (( `cat $TEMP_BUILD_LOG | grep ORA- | grep -v "ORA-02260" | grep -v "ORA-00955" | wc -l` == 0 ))
+then
+        echo "Build finished successfully, ignoring ORA-02260 and ORA-00955 which are okay"
+else
+        echo "!!! Build finished with Errors !!!"
+fi
+echo "#########################################################################################"
+rm -f $TEMP_BUILD_INDEX
+rm -f $TEMP_UNSUABLE_INDEX
+rm -f $TEMP_BUILD_LOG
+
+ 
+
+
+###########################
+# Run Script                
+###########################

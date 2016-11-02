@@ -1,0 +1,46 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showspeed from the system stats
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed off
+column c1 for 999.99
+column c2 for 999.99
+column full_scan_ms for 999,999.99
+column index_scan_ms for 999,999.99
+column pval1 for 999,999,999,999.99
+column pval2 for a30
+column optimizer_index_cost_adj for 999,999.99
+select 
+   sum(a.time_waited_micro)/sum(a.total_waits)/1000000 c1, 
+   sum(b.time_waited_micro)/sum(b.total_waits)/1000000 c2,
+   (
+      sum(a.total_waits) / 
+      sum(a.total_waits + b.total_waits)
+   ) * 100 full_scan_ms,
+   (
+      sum(b.total_waits) / 
+      sum(a.total_waits + b.total_waits)
+   ) * 100 index_scan_ms,
+  (
+      sum(b.time_waited_micro) /
+      sum(b.total_waits)) / 
+      (sum(a.time_waited_micro)/sum(a.total_waits)
+   ) * 100 optimizer_index_cost_adj  
+from 
+   dba_hist_system_event a, 
+   dba_hist_system_event b
+where 
+   a.snap_id = b.snap_id
+and a.event_name = 'db file scattered read'
+and b.event_name = 'db file sequential read';
+
+select sname, pname, pval1,pval2 from sys.aux_stats$ order by 1;
+EOF
+

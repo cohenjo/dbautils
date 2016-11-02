@@ -1,0 +1,106 @@
+#!/usr/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show sql for SID
+#
+#  USAGE: showsql SID
+#
+#  By Adi Zohar - May 2004
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+typeset -u ALL=`echo $2|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "showsql SID [all]"
+  exit 1
+fi
+
+echo "set echo off feed off pages 0
+select sql_id from v\$session where sid='$NAME' ;
+" | sqlplus -s / | read hash
+
+#---------------------------------------------------------
+# Session Detail
+#---------------------------------------------------------
+echo "
+set verify off feedback off linesize 200 pagesize 90
+col username format a22 head 'User Name' trunc
+col osuser format a12
+col sid format 99999 
+col spid format a6  head "SHADOW"
+col process format a6  head "PROCESS"
+col serial# head Ser# format 99999999
+col terminal format a15 trunc
+col program  format a20 trunc
+col machine format a20 trunc
+col running_sec format 99999 head "RUNNING_SECS"
+col sql_id for a13
+break on username on sid on serial# on osuser
+select s.username, osuser,s.sid, s.serial#,s.program,s.terminal,s.machine,s.process,p.spid,s.status,to_char(logon_time,'DD/MM/YYYY HH24:MI') logon_time,
+last_call_et running_sec
+from v\$session s, v\$process p
+where p.addr (+) = s.paddr
+and s.sid='$NAME'
+and rownum=1;
+
+prompt  
+set pages 0
+col sql for a110 
+select 'Rows processed = ' || ROWS_PROCESSED || ' (sql_id='||s.sql_id||')  first load time = ' || FIRST_LOAD_TIME || '   ('||sid||','||serial#||')' ||chr(10) as sql, 'Event = ' || event
+from 
+	v\$sqlarea a , v\$session s
+where s.sid = '$NAME'
+and s.sql_id = a.sql_id;
+prompt  
+set lines 190
+select plan_table_output from table(dbms_xplan.display_cursor
+     (
+        '$hash',
+        (select min(child_number) from v\$sql_plan  where sql_id in (select sql_id from v\$session where sid='$NAME')),
+        'typical -predicate -note ')
+     )
+where exists (select 1 from v\$sql_plan where sql_id ='$hash');
+
+col bind_name for a20
+col value_string for a30 trunc
+col datatype for a16 trunc
+col last_captured for a18
+set pages 1000 trimsp on
+
+select name as bind_name, value_string, DATATYPE_STRING datatype, to_char(last_captured,'DD/MM/YY HH24:MI') last_captured
+from  v\$sql_bind_capture
+where 
+        sql_id ='$hash' 
+        and CHILD_NUMBER=(select max(CHILD_NUMBER) from v\$sql_bind_capture  where sql_id='$hash')
+        order by POSITION;
+
+select name as name, value_string, DATATYPE_STRING datatype, to_char(last_captured,'DD/MM/YY HH24:MI') last_captured
+from  dba_hist_sqlbind
+where
+        sql_id ='$hash' 
+    and snap_id=(select max(snap_id) from dba_hist_sqlbind where sql_id='$hash')
+    and not exists (select 1 from v\$sql_bind_capture where sql_id ='$hash')
+order by POSITION;
+
+
+" | sqlplus -s '/ as sysdba'
+
+if [ "$ALL" = "ALL" ]
+then
+        echo ""
+        echo "#####################################################################################################"
+        echo "# Old SQLs                                                                                          #"
+        echo "#####################################################################################################"
+        echo "
+        set pages 0 head off feed off lines 9999 trimsp off long 1000000
+        col sql_fulltext for a9999
+        select /*+ ordered */ chr(10)||rownum||' - '||s.sql_id||') '||sql_fulltext  as sql_fulltext
+        from
+                v\$open_cursor o, 
+                v\$sqlarea s
+        where o.sql_id=s.sql_id and s.sql_id not in (select nvl(sql_id,' ') from v\$session where sid='$NAME')
+        and sid='$NAME';
+" | sqlplus -s "/ as sysdba" | sed ' /^$/{N; /^\n$/D; }'
+fi
+echo ""

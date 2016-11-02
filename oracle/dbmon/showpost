@@ -1,0 +1,17 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: showpost process_id
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "ProcessID must be provided: \c"; read NAME
+fi
+
+egrep "Login Name|First Name|Last Name|Employee ID" ~opprd/agent/err_${NAME}_.log

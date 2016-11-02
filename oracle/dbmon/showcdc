@@ -1,0 +1,276 @@
+#!/bin/ksh 
+
+######################################################################
+# Script:    showcdc	
+# Author:    Adi Zohar
+#
+#######################################################################
+
+#########################################################################
+# Print script usage
+#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                | Help"
+ echo " -l                | Show Last Purge, Extend"
+ echo " -p                | Show Published  Columns"
+ echo " -s                | Show Subscriptions"
+ echo " -t                | Show Subscribed Tables"
+ echo " -c                | Show Subscribed Columns"
+ echo " -cnt              | Show Counts of number of tables"
+ echo " -cdccnt           | Show Counts of rows in CDC tables"
+ echo " -v  [VIEW_NAME]   | Show Subscriber View "
+ echo "}\n"
+ printf "\n"
+}
+
+
+########################################################################
+# Counts
+########################################################################
+Counts()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	set lines 199 pages 0 verify off feed off
+        select 'DBA_SUBSCRIPTIONS: '|| count(*) from DBA_SUBSCRIPTIONS;
+        select 'DBA_SUBSCRIBED_TABLES: '|| count(*) from DBA_SUBSCRIBED_TABLES;
+        select 'CHANGE_TABLES: '|| count(*) from CHANGE_TABLES;
+EOF
+}
+
+########################################################################
+# PublishedColumns
+########################################################################
+PublishedColumns()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col pub_id for 999,999,999
+	col change_set_name for a20
+	col source_table for a45
+	col CDC_TABLE for a45
+	col column_name for a30
+	set lines 199 pages 2000 verify off feed off
+	select
+		pub_id, 
+		change_set_name, 
+		source_schema_name||'.'||source_table_name as source_table,
+		change_table_schema||'.'||change_table_name as CDC_TABLE,
+		column_name
+	from DBA_PUBLISHED_COLUMNS;  
+EOF
+}
+
+########################################################################
+# Check CDC Rows   
+########################################################################
+CheckCDCRows()
+{
+        tmp_scr=/tmp/showcdc_$$.sql
+        echo "set lines 199 pages 0 trimsp on echo off feed off 
+        select 'select /*+ parallel(a,16) full(a) */ rpad('''||CHANGE_TABLE_NAME||''',32)||to_char(count(*),''999,999,999'')|| '' rows'' from '||CHANGE_TABLE_SCHEMA||'.'||CHANGE_TABLE_NAME||' a having count(*) >0;' 
+        from change_tables order by 1;
+" | sqlplus -s "/ as sysdba" >$tmp_scr
+
+        echo "Check on `grep select $tmp_scr|wc -l` CDC tables"
+        echo "set lines 199 pages 0 trimsp on echo off feed off
+        @$tmp_scr
+" | sqlplus -s "/ as sysdba" |sort -nk 2
+
+echo "Done."
+rm -f $tmp_scr
+
+}
+
+########################################################################
+# PublishedColumns
+########################################################################
+LastPurgedExtend()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col min_last_purged for a20
+	col max_last_purged for a20
+	col last_purged for a20
+	col last_extended for a20
+	col min_last_extended for a20
+	col max_last_extended for a20
+        col cnt for 999,999
+	set lines 199 pages 2000 verify off feed off
+        select 
+                to_char(min(last_purged),'DD/MM/YYYY HH24:MI') min_last_purged, 
+                to_char(max(last_purged),'DD/MM/YYYY HH24:MI') max_last_purged, 
+                to_char(min(last_extended),'DD/MM/YYYY HH24:MI') min_last_extended ,
+                to_char(max(last_extended),'DD/MM/YYYY HH24:MI') max_last_extended 
+        from dba_subscriptions;
+
+        select to_char(last_extended,'YYYY-MM-DD HH24') last_extended, count(*) cnt
+        from dba_subscriptions
+        group by to_char(last_extended,'YYYY-MM-DD HH24')
+        order by 1;
+
+        select to_char(last_purged,'YYYY-MM-DD HH24') last_purged, count(*) cnt
+        from dba_subscriptions
+        group by to_char(last_purged,'YYYY-MM-DD HH24')
+        order by 1;
+EOF
+}
+
+########################################################################
+# SubscribedTables
+########################################################################
+SubscribedTables()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col handle for 999,999
+	col source_schema_name for a20
+	col source_table_name for a30
+	col view_name for a30
+	col change_set_name for a30
+	col subscription_name for a30
+	set lines 199 pages 2000 verify off feed off
+	select 
+		handle,
+		source_schema_name, 
+		source_table_name,
+		view_name,
+		change_set_name,
+		subscription_name
+	from DBA_SUBSCRIBED_TABLES;
+
+EOF
+}
+
+########################################################################
+# SubscribedColumns
+########################################################################
+SubscribedColumns()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col handle for 999,999
+	col source_schema_name for a20
+	col source_table_name for a20
+	col column_name for a20
+	col change_set_name for a20
+	col subscription_name for a30
+	set lines 199 pages 2000 verify off feed off
+	select 
+		handle,
+		source_schema_name, 
+		source_table_name,
+		column_name,
+		subscription_name
+	from DBA_SUBSCRIBED_COLUMNS;
+
+EOF
+}
+
+########################################################################
+# Subscription
+########################################################################
+Subscription()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col handle for 999,999
+	col set_name for a20
+	col status for a6
+	col last_purged for a20
+	col last_extended for a20
+	col subscription_name for a30
+	set lines 199 pages 2000 verify off feed off
+	select 
+		handle,
+		set_name,
+		status, 
+		to_char(last_purged,'DD/MM/YYYY HH24:MI') last_purged, 
+		to_char(last_extended,'DD/MM/YYYY HH24:MI') last_extended, 
+		subscription_name
+	from DBA_SUBSCRIPTIONS;
+
+EOF
+}
+
+#######################################################################
+# SubscriberView
+########################################################################
+SubscriberView()
+{
+echo ""
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	set lines 199 pages 2000 verify off feed off
+	set serveroutput on buffer 10000000
+
+	declare
+		CURSOR CDC_VIEWS_CURSOR IS
+		select view_name, text from dba_views
+		where owner='SYS' and view_name in 
+		(
+			select view_name
+			from DBA_SUBSCRIBED_TABLES dst
+			where view_name like '%${1}%'
+		);
+
+		v_text VARCHAR2(32000);
+		v_name VARCHAR2(30);
+	begin
+
+		OPEN    CDC_VIEWS_CURSOR;
+		LOOP
+
+			FETCH   CDC_VIEWS_CURSOR
+			INTO    v_name, v_text;
+			EXIT    WHEN CDC_VIEWS_CURSOR%NOTFOUND; 
+		
+			v_text:=substr(v_text,instr(v_text,'CSCN$ >='));
+			v_text:=replace(v_text,' AND CSCN$ <=',' and');
+			v_text:=replace(v_text,' >=',' between');
+			v_text:=replace(v_text,' WITH READ ONLY','');
+			dbms_output.put_line (v_name||' ==> '||v_text);
+
+		END LOOP;             
+
+	exception
+		WHEN OTHERS THEN
+			dbms_output.put_line ('${1} not exist');
+	end;
+	/
+EOF
+echo ""
+}
+#########################################################################
+# MAIN
+#
+if [ $# -eq 0 ]
+then Usage
+	exit $OK
+fi 
+
+typeset -u TABLE_NAME=`echo $2|cut -d. -f1`
+if [ -z "$TABLE_NAME" ] 
+then
+	export TABLE_NAME="%"
+fi
+
+case $1 in
+    -h   ) Usage ;;
+    -p   ) PublishedColumns ;;
+    -l   ) LastPurgedExtend ;;
+    -s   ) Subscription ;;
+    -t   ) SubscribedTables ;;
+    -c   ) SubscribedColumns ;;
+    -cnt ) Counts ;;
+    -cdccnt ) CheckCDCRows ;;
+    -v   ) SubscriberView $TABLE_NAME ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR 
+           ;;
+  esac
+

@@ -1,0 +1,1 @@
+SELECT * FROM v_monitor.active_events where event_severity in ('Emergency','Alert','Critical','Error','Warning');

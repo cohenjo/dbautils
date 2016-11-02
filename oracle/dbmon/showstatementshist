@@ -1,0 +1,86 @@
+#!/usr/bin/ksh
+#set -x
+
+if [ $# -gt 5 -o $# -lt 4 ]
+then
+  echo "Usage: showstatementshist <database name> <Begin Snap Time(YYYY-MM-DD HH24:MI)> <End Snap Time(YYYY-MM-DD HH24:MI)> <No of SQLs> <module_name>"
+  echo "Ex: showstatementshist IAMPR41 \"2009-04-13 09:05\" \"2009-04-14 08:55\" 10000 SOEZRPTJOB"
+  exit 1
+fi
+
+db=$1
+begin_time=$2
+end_time=$3
+top=$4
+sqlstring=$5
+
+if [ -z "$sqlstring" ]
+then
+  export sqlstring="%";
+fi
+
+export ORACLE_SID=$db
+
+begin_snap_id=`sqlplus -s / as sysdba <<EOF
+set pages 0 feedback off heading off
+select distinct SNAP_ID from DBA_HIST_SNAPSHOT
+where to_date('$begin_time','YYYY-MM-DD HH24:MI') between BEGIN_INTERVAL_TIME and END_INTERVAL_TIME;
+EOF`
+#echo $begin_snap_id
+begin_snap_id=`echo $begin_snap_id|sed "s/ //g"`
+
+end_snap_id=`sqlplus -s / as sysdba <<EOF
+set pages 0 feedback off heading off
+select distinct SNAP_ID from DBA_HIST_SNAPSHOT
+where to_date('$end_time','YYYY-MM-DD HH24:MI') between BEGIN_INTERVAL_TIME and END_INTERVAL_TIME;
+EOF`
+#echo $end_snap_id
+end_snap_id=`echo $end_snap_id|sed "s/ //g"`
+
+db_id=`sqlplus -s / as sysdba <<EOF
+set pages 0 feedback off heading off
+select dbid from v\\$database;
+EOF`
+#echo $db_id
+
+sqlplus -s / as sysdba <<EOF
+set pages 50000
+set feedback off echo off term off 
+column TEXT format a30
+column ELAPS format 999999999
+col CPU format 999999999
+set linesize 300
+define sqlstring=${sqlstring}
+spool /tmp/past_statements.txt
+SELECT *
+  FROM (SELECT   sg.sql_id , 
+		 TO_CHAR (SUBSTR (t.sql_text, 1, 30)) text,
+                 ROUND (sg.elapsed_time / 1000000, 2) elaps,
+                 ROUND (sg.cpu_time / 1000000, 2) cpu, 
+		 sg.executions exe,
+                 sg.ROWS_PROCESSED,
+                 ROUND ((sg.elapsed_time/sg.executions/1000000),3) per_execution,
+		 sg.module
+            FROM dba_hist_sqltext t,
+                 (SELECT   s.dbid, s.sql_id,
+                           SUM (s.elapsed_time_delta) elapsed_time,
+                           SUM (s.cpu_time_delta) cpu_time,
+                           SUM (s.executions_delta) executions,
+                           SUM (s.ROWS_PROCESSED_DELTA) ROWS_PROCESSED,
+                           MAX (s.module) module
+                      FROM dba_hist_sqlstat s
+                     WHERE s.snap_id >= $begin_snap_id
+                       AND s.snap_id <= $end_snap_id
+		       AND nvl(s.module,'%') like '%&sqlstring%'	
+                       AND s.dbid =$db_id
+		       AND s.executions_delta != 0
+                  GROUP BY s.dbid, s.sql_id) sg
+           WHERE sg.dbid = t.dbid
+             AND sg.sql_id = t.sql_id 
+        ORDER BY sg.elapsed_time desc)
+ WHERE ROWNUM <=$top 
+/
+spool off
+EOF
+
+echo "********* OUTPUT IS ALSO IN FILE /tmp/past_statements.txt   ************"

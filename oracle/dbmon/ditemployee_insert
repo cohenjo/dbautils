@@ -1,0 +1,38 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to insert to dit_employee_table
+#
+#  By Adi Zohar - Nov 2009 
+#*****************************************************************************
+
+typeset -u ID=`echo $1|cut -d. -f1`
+if [ -z "$ID" ] 
+then
+  echo "Usage: ditemployee_insert  emp_id  full_name" 
+  echo "       ditemployee_insert  88888   \"ADI ZOHAR\" "
+  exit
+fi
+
+export NAME=$2
+if [ -z "$NAME" ] 
+then
+  echo "Usage: ditemployee_insert  emp_id  full_name" 
+  echo "       ditemployee_insert  88888   \"ADI ZOHAR\" "
+  exit
+fi
+
+export NAMELAST=$3
+if [ -z "$NAMELAST" ] 
+then
+        export NAME=$2
+else
+        export NAME="$2 $NAMELAST"
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set verify off line 132 feed on  pages 300
+insert into dit_webapps_user.dit_employee (LOGIN_NAME, FULL_NAME, EMPLOYEE_ID)                                          
+VALUES ('w${ID}','$NAME',$ID);
+commit;
+EOF

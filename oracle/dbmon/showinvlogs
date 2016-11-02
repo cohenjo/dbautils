@@ -1,0 +1,70 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 199 feed on 
+column INDEX_OWNER format a20
+column aa format a07
+column table_name format a25
+column data_type format a15 trunc
+column data_length format 999999999
+
+select distinct 'In Tab' aa, i.index_owner, i.table_name, t.column_name, t.data_type, t.data_length
+from 
+    dba_snapshot_logs s,
+    dba_constraints c,
+    dba_ind_columns i,
+    dba_tab_columns t
+where 
+    c.owner=s.log_owner and
+    c.table_name=s.master and
+    c.constraint_type='P' and
+    i.index_name=c.constraint_name and
+    i.index_owner=c.owner and
+    i.table_name=c.table_name and
+    t.owner=i.table_owner and
+    t.table_name=i.table_name and
+    t.column_name=i.column_name
+minus
+select  'In Tab', t.owner, s.master, t.column_name, t.data_type, t.data_length
+from 
+    dba_tab_columns t,
+    dba_snapshot_logs s
+where 
+    t.owner=s.log_owner and
+    t.table_name=s.log_table and 
+        column_name not in ('CHANGE_VECTOR\$\$','DMLTYPE\$\$','OLD_NEW\$\$','SNAPTIME\$\$','M_ROW\$\$')
+union all
+select 'In Log',t.owner, s.master, t.column_name, t.data_type, t.data_length
+from 
+    dba_tab_columns t,
+    dba_snapshot_logs s
+where 
+    t.owner=s.log_owner and
+    t.table_name=s.log_table and 
+    column_name not in ('CHANGE_VECTOR\$\$','DMLTYPE\$\$','OLD_NEW\$\$','SNAPTIME\$\$','M_ROW\$\$')
+minus    
+select 'In Log', i.index_owner, i.table_name, t.column_name, t.data_type, t.data_length
+from 
+    dba_snapshot_logs s,
+    dba_constraints c,
+    dba_ind_columns i,
+    dba_tab_columns t
+where 
+    c.owner=s.log_owner and
+    c.table_name=s.master and
+    c.constraint_type='P' and
+    i.index_name=c.constraint_name and
+    i.index_owner=c.owner and
+    i.table_name=c.table_name and
+    t.owner=i.table_owner and
+    t.table_name=i.table_name and
+    t.column_name=i.column_name;
+EOF

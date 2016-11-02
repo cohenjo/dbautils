@@ -1,0 +1,29 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: shodpinfo
+#  the script show_dumpfile_info.sql must be run first 
+#
+#  By Adi Zohar - Jun 2008
+#*****************************************************************************
+
+if [ $# -lt 1 ]
+then
+   echo "\n Usage: $0 <DUMP_FILE> <DIR=DATA_PUMP_DIR> \n"
+   exit 1
+fi
+
+export FILE=$1
+export DIR=$2
+
+if [ -z "$DIR" ]
+then
+  DIR=DATA_PUMP_DIR
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+SET serveroutput on SIZE 1000000
+exec show_dumpfile_info(p_dir=> '$DIR', p_file=> '$FILE')
+EOF

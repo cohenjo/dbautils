@@ -1,0 +1,51 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to generate disable cons for user 
+#
+#  USAGE: genremovedb username
+#
+#  By Barbara R. - Jan 2004
+#*****************************************************************************
+
+TEMP_FILE=/tmp/genremovedb_$$.sql
+TEMP_FILE_LOG=/tmp/genremovedb_run_$$.sql
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+select 'rm -f ' || file_name
+from   dba_data_files
+union
+select 'rm -f ' || member 
+from  v\$logfile
+union
+select 'rm -f ' || name
+from  v\$controlfile
+union
+select 'rm -f ' || name
+from  v\$tempfile;
+spool off
+EOF
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "rm -f" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes files to remove"
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+echo "Would you like to execute ? (Y/N) \c"; read Local
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	chmod u+x $TEMP_FILE
+	$TEMP_FILE
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

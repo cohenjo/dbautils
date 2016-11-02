@@ -1,0 +1,35 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: showrole role_name
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u OWNER=`echo $1|cut -d. -f1`
+if [ -z "$OWNER" ] 
+then
+  echo "OWNER be provided: \c"; read OWNER
+fi
+
+typeset -u NAME=`echo $2|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "NAME be provided: \c"; read NAME
+fi
+
+sqlplus "/ as sysdba" <<EOF
+set verify on line 132 feed on pages 300 echo on
+create synonym AAM_USER.$NAME for $OWNER.$NAME;    
+create synonym ACMS_USER.$NAME for $OWNER.$NAME;    
+create synonym AFL_USER.$NAME for $OWNER.$NAME;    
+create synonym DLV_USER.$NAME for $OWNER.$NAME;    
+create synonym EAI_USER.$NAME for $OWNER.$NAME;    
+create synonym OP_USER.$NAME for $OWNER.$NAME;    
+create synonym PD_USER.$NAME for $OWNER.$NAME;    
+create synonym REF_UPDATE.$NAME for $OWNER.$NAME;    
+create synonym CNV_DOWNLOAD_BATCH.$NAME for $OWNER.$NAME;    
+create synonym SO_USER.$NAME for $OWNER.$NAME;    
+EOF

@@ -1,0 +1,209 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to user objects 
+#
+#  USAGE: showuser username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "User must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off
+set verify off
+set line 150
+set pages 200
+
+column bytes format 99,999,999,999 head "Bytes Used"
+column max_bytes format 999,999,999,999,999 head Quota
+column default_tablespace format a20 head "Default Tablespace"
+column tablespace_name for a25 
+column username format a25 
+
+prompt ******************************************************************************************************
+prompt *                                       General Details                                              *
+prompt ******************************************************************************************************
+select username, default_tablespace,  created 
+  from dba_users 
+ where  username=upper('${NAME}')
+/
+prompt.
+prompt ******************************************************************************************************
+prompt *                                            Quotas                                                  *
+prompt ******************************************************************************************************
+select tablespace_name, 
+       bytes, 
+       max_bytes 
+  from dba_ts_quotas where username=upper('${NAME}')
+order by 1
+/
+EOF
+echo " "
+echo "******************************************************************************************************"
+echo "*                                             Grants                                                 *"
+echo "******************************************************************************************************"
+echo "For a list of Grants, press enter."; read TEMP
+sqlplus -s "/ as sysdba" <<EOF
+set feed off verify off line 190 pages 200
+column grantee format a30
+column granted_role format a35
+column admin_option heading admin format a10
+select granted_role, 
+       admin_option  
+  from dba_role_privs 
+ where grantee = upper('${NAME}') 
+order by 1
+/
+EOF
+
+echo " "
+echo "******************************************************************************************************"
+echo "*                                           Sys privileges                                           *"
+echo "******************************************************************************************************"
+echo "For a list of Grants, press enter."; read TEMP
+sqlplus -s "/ as sysdba" <<EOF
+set feed off verify off line 150 pages 200
+column privilege format a25
+column admin_option heading admin format a8
+
+select privilege, 
+       admin_option  
+  from dba_sys_privs where grantee = upper('${NAME}')
+order by 1
+/
+EOF
+
+echo " "
+echo "******************************************************************************************************"
+echo "*                                         Table privileges                                           *"
+echo "******************************************************************************************************"
+echo "For a list of Tables Priviliges, press enter."; read TEMP
+sqlplus -s "/ as sysdba" <<EOF
+set feed off verify off line 150 pages 200
+column owner format a28
+column table_name format a34
+column privilege format a12
+select table_name,privilege,owner  from dba_tab_privs where grantee = upper('${NAME}')
+order by owner,table_name
+/
+EOF
+
+echo " "
+echo "******************************************************************************************************"
+echo "*                                         Table Onwer privileges                                     *"
+echo "******************************************************************************************************"
+echo "For a list of Tables Onwer Priviliges, press enter."; read TEMP
+sqlplus -s "/ as sysdba" <<EOF
+set feed off verify off line 190 pages 2000
+column owner format a25
+column grantee format a30
+column table_name format a34
+column privilege format a12
+select owner, table_name,privilege,grantee  from dba_tab_privs where owner = upper('${NAME}')
+order by owner, table_name
+/
+EOF
+
+echo " "
+echo "******************************************************************************************************"
+echo "*                                           Tables                                                   *"
+echo "******************************************************************************************************"
+echo "For a list of Tables , press enter."; read TEMP
+sqlplus -s "/ as sysdba" <<EOF
+set feed on trimspo on verify off line 150 pages 1000
+column tablespace_name format a25 head TABLESPACE
+column table_name format a30
+column blocks format 999
+column empty_blocks head empty format 9,999
+column max_extents head 'max|ext' format 9,999
+column initial_extent head 'init|ext MB' format 9,999
+column next_extent head 'next|ext MB' format 9,999
+column owner format a28
+column mb head 'Size MB' format 999,999
+select table_name,  dt.tablespace_name, dt.initial_extent/1024/1024 initial_extent, dt.next_extent/1024/1024 next_extent, sum(ds.bytes/1024/1024) mb
+from  dba_tables dt, dba_segments ds
+where 
+	dt.owner=upper('${NAME}') 
+	and ds.segment_name=dt.table_name 
+	and ds.owner=dt.owner
+	group by  table_name,  dt.tablespace_name, dt.initial_extent, dt.next_extent
+order by table_name
+/
+EOF
+
+echo " "
+echo "******************************************************************************************************"
+echo "*                                           Indexes                                                  *"
+echo "******************************************************************************************************"
+echo "For a list of Indexes , press enter."; read TEMP
+sqlplus -s "/ as sysdba" <<EOF
+set feed on trimspo on verify off line 150 pages 1000
+column tablespace_name format a22 head TABLESPACE
+column table_name format a30
+column index_name format a30
+column blocks format 999
+column empty_blocks head empty format 9,999
+column max_extents head 'max|ext' format 9,999
+column initial_extent head 'init|ext MB' format 9,999
+column next_extent head 'next|ext MB' format 9,999
+column owner format a28
+column mb head 'Size MB' format 999,999
+select dt.table_name,  dt.index_name, dt.tablespace_name, dt.initial_extent/1024/1024 initial_extent, dt.next_extent/1024/1024 next_extent, ds.bytes/1024/1024 mb
+from  dba_indexes dt, dba_segments ds
+where 
+	ds.segment_name=dt.index_name 
+	and ds.owner=dt.owner
+	and dt.owner=upper('${NAME}') 
+order by table_name, index_name
+/
+EOF
+
+echo " "
+echo "******************************************************************************************************"
+echo "*                                            Synonyms                                                *"
+echo "******************************************************************************************************"
+echo "For a list of Synonyms , press enter."; read TEMP
+sqlplus -s "/ as sysdba" <<EOF
+set feed on trimspo on verify off line 190 pages 1000
+col db_link format a35
+col table_owner format a25 head "Table Owner"
+column table_name format a34
+select synonym_name, table_owner, table_name, db_link from dba_synonyms where owner=upper('${NAME}')
+order by  synonym_name, table_owner
+/
+EOF
+
+echo " "
+echo "******************************************************************************************************"
+echo "*                                             Views                                                  *"
+echo "******************************************************************************************************"
+echo "For a list of Views , press enter."; read TEMP
+sqlplus -s "/ as sysdba" <<EOF
+set feed on trimspo on verify off line 150 pages 1000
+select view_name from dba_views where owner=upper('${NAME}')
+/
+EOF
+
+echo " "
+echo "******************************************************************************************************"
+echo "*                                         Other Objects                                              *"
+echo "******************************************************************************************************"
+echo "For a list of other Objects , press enter."; read TEMP
+sqlplus -s "/ as sysdba" <<EOF
+set feed on trimspo on verify off line 150 pages 1000
+column object_name format a30
+column object_type format a20
+column owner format a26
+select owner,object_name,object_type,  created
+from  dba_objects 
+where owner=upper('${NAME}')
+and object_type not in ('TABLE','INDEX','VIEW','SYNONYM')
+/
+EOF

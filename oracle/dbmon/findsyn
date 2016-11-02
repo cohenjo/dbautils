@@ -1,0 +1,31 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to find objects
+#
+#  USAGE: findobj object_name
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "Synonym must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 150
+column synonym_name format a60
+column synonym_dest format a70
+column a format a5 heading ''
+select owner||'.'||synonym_name as synonym_name,' --> ' as a ,table_owner||decode(table_owner,null,'','.')||table_name||decode(db_link,null,'','@')||db_link as synonym_dest 
+from  dba_synonyms 
+where synonym_name like upper('%${NAME}%')
+order by 1
+/
+EOF

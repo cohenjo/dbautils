@@ -1,0 +1,68 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show parallel queries
+#
+#  USAGE: showparallel
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+while true
+do
+clear
+echo "TIME:" `date`
+sqlplus -s "/ as sysdba" <<EOS
+set pages 100 lines 190 feedback off
+col Machine for a20
+col Os_User for a6
+col Master_sid for 99999
+col parallels for 999
+col username for a10
+col module for a10
+
+break on report
+compute sum of parallels on report
+
+
+set heading off
+select 'Parallel Sessions:' from dual;
+set heading on
+select a.qcsid Master_sid,b.sql_id,count(*) parallels ,substr(module,1,6) module,b.process Os_Process,b.machine Machine,b.osuser Os_User, substr(b.username,1,6) username, substr(SQL_TEXT,1,50) sql_text 
+  from  v\$px_session a, v\$session  b, v\$sqltext t
+ where a.qcsid <> a.sid
+   and a.qcsid = b.sid
+   and t.piece=0
+   and t.sql_id=b.sql_id
+group by a.qcsid,b.process ,b.machine,b.osuser,b.username,b.sql_id,module,sql_text
+order by sql_id,1,2;
+set heading off
+select 'Parallel Sessions by Sql_ID :' from dual;
+set heading on
+select sql_id,count(*) parallels 
+  from  v\$px_session a, v\$session  b
+ where a.qcsid <> a.sid
+   and a.qcsid = b.sid
+group by sql_id
+order by 2
+;
+set heading off
+select 'Serial Active Sessions :' from dual;
+set heading on
+
+select sid,substr(module,1,6) module, b.process Os_Process,b.machine Machine,b.osuser Os_User, substr(b.username,1,6) username,substr(SQL_TEXT,1,80) sql_text  
+ from v\$session  b, v\$sqltext t
+ where sid not in (select sid from v\$px_session)
+ and t.piece=0
+ and t.sql_id=b.sql_id
+ and status='ACTIVE';
+
+set heading off
+select 'Parallel Rollbacks:' from dual;
+set heading on
+select USN,SLT,SEQ,STATE,UNDOBLOCKSDONE,UNDOBLOCKSTOTAL,RCVSERVERS from v\$fast_start_transactions;
+
+EOS
+sleep 20
+done
+
+

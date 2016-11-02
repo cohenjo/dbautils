@@ -1,0 +1,63 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to produce weekly stat from precise for physical reads, consistent changes
+# 
+#  USAGE: show_weekly_stats
+#
+#  By Adi Zohar m Huyen Pham - June 2004
+#*****************************************************************************
+. ~/.profile
+
+export START_DAYS_AGO=14
+export DB_TO_CHECK=NWGPR1
+export START_TIME=8
+export END_TIME=20
+export TMP_LOG=/tmp/show_weekly_$$.csv
+export MAIL_GROUP=Oradba@sensis.com.au
+
+#-------------------------------------------------------------
+#-- get the monday two weeks ago 
+#-- today - (the day of the week number) + 2 - (two weeks)
+#-----------------------------------------------------------
+echo "set echo off pages 0 lines 30 trimsp on feed off
+select to_char(trunc(sysdate-to_char(trunc(sysdate),'D')+2)-${START_DAYS_AGO},'DD/MM/YYYY') DAY from dual;
+" | sqlplus -s dba_oper/ddddba_oper@oprpr1 |  read MON_TWO_WEEKS_AGO
+
+echo "Weekly Stats for the last two weeks starting monday $MON_TWO_WEEKS_AGO "
+ 
+
+sqlplus -s dba_oper/ddddba_oper@oprpr1 <<*EOF*
+set pages 9999 lines 199 trimsp on echo off feed off colsep ,
+
+col db format a7
+col day format a18 
+col name format a20 head "stat name"
+col total_physical_read format 99999999999999 
+col total_consistent_change format 99999999999999 
+spool $TMP_LOG
+
+select DAY, sum(total_physical_read) total_physical_read, sum(total_consistent_change) total_consistent_change from 
+(
+	SELECT   TO_CHAR (time_slice_start_day, 'YYYY/MM/DD DY')||to_char(time_slice_start_hour,'09') DAY ,
+		 sum(decode(STATISTIC#,40,value,0)) total_physical_read,
+		 sum(decode(STATISTIC#,42,value,0)) total_consistent_change
+	    FROM dbtuner32.precise_v\$sysstat_prev p
+	   WHERE database_id like '${DB_TO_CHECK}%'
+	     AND row_type = 'A'
+	     AND STATISTIC# in (40,42) and 
+		 time_slice_start_hour between $START_TIME and $END_TIME and
+		 (
+		 time_slice_start_day BETWEEN TO_DATE ('${MON_TWO_WEEKS_AGO}', 'DD/MM/YYYY') AND TO_DATE ('${MON_TWO_WEEKS_AGO}', 'DD/MM/YYYY')+4 
+		 or
+		 time_slice_start_day BETWEEN TO_DATE ('${MON_TWO_WEEKS_AGO}', 'DD/MM/YYYY')+7 AND TO_DATE ('${MON_TWO_WEEKS_AGO}', 'DD/MM/YYYY')+4+7 
+		 )
+	group by 	
+		  TO_CHAR (time_slice_start_day, 'YYYY/MM/DD DY')||to_char(time_slice_start_hour,'09')
+)
+group by DAY
+order by DAY;
+	 
+*EOF*
+
+mailx -s "`hostname`:`whoami` - Weekly stats on NWGPR1" "${MAIL_GROUP}" -U < $TMP_LOG

@@ -1,0 +1,204 @@
+#!/bin/ksh
+
+######################################################################
+# Script:    showrman
+# Author:    Huyen Pham
+#
+#######################################################################
+# Print script usage
+#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                | Help"
+ echo " -p                | Show Rman Backup Pieces of current DB"
+ echo " -l                | Show Latest Rman Backup Pieces of current DB"
+ echo " -s                | Show Rman Backup Summary of current DB"
+ echo " -arc              | Show Rman Archivelog Backups of current DB"
+ echo ""
+ echo " -inc              | List Database incarnations"
+ echo " -db               | List Registered Databases in Rman catalog"
+ echo " -expired          | List Expired Backups of current DB"
+ echo ""
+ echo " -crosscheck       | Crosscheck Rman backups of current DB"
+ echo ""
+ echo " -prm              | Show Rman Parameters of current DB"
+ echo "}\n"
+ printf "\n"
+}
+
+
+########################################################################
+# Parameters
+########################################################################
+Parameters()
+{
+        rmanc << EOF
+        SHOW ALL;
+EOF
+}
+
+########################################################################
+# Backup Pieces
+########################################################################
+BkupPiece()
+{
+	sqlplus -s "/@RMAN" <<EOF
+	clear buffer
+        col pieces for 99 trunc
+        col piece# for 99 trunc
+        col handle for a75 trunc
+	set lines 199 pages 80 verify off feed off
+select i.name,
+to_char(s.completion_time, 'DD-Mon-YY HH24:MI:SS') Completion_Time, 
+s.bs_key, 
+s.pieces, 
+s.status, 
+s.db_id, 
+p.piece#, 
+p.handle,
+p.bp_key, 
+i.dbinc_key 
+from rc_backup_set s, 
+rc_backup_piece p, 
+rc_database_incarnation i 
+where s.bs_key = p.bs_key 
+and i.current_incarnation = 'YES' 
+and i.name = '$DB_NAME' 
+and s.completion_time = p.completion_time 
+and s.db_id = p.db_id 
+and p.db_id = i.dbid
+order by i.dbinc_key, s.completion_time; 
+EOF
+}
+
+########################################################################
+# Latest Backup Pieces
+########################################################################
+LatestBkup()
+{
+	sqlplus -s "/@RMAN" <<EOF
+	clear buffer
+        col pieces for 99 trunc
+        col piece# for 99 trunc
+        col handle for a75 trunc
+	set lines 199 pages 80 verify off feed off
+select i.name,
+to_char(s.completion_time, 'DD-Mon-YY HH24:MI:SS') Completion_Time, 
+s.bs_key, 
+s.pieces, 
+s.status, 
+s.db_id, 
+p.piece#, 
+p.handle,
+p.bp_key, 
+i.dbinc_key 
+from rc_backup_set s, 
+rc_backup_piece p, 
+rc_database_incarnation i 
+where s.bs_key = p.bs_key 
+and i.current_incarnation = 'YES' 
+and i.name = '$DB_NAME' 
+and s.completion_time = p.completion_time 
+and s.db_id = p.db_id 
+and p.db_id = i.dbid
+and trunc(s.completion_time) =
+(
+select trunc(max(completion_time))
+from rc_backup_set i2
+where i2.db_id = i.dbid
+)
+order by i.dbinc_key, s.completion_time; 
+EOF
+}
+
+########################################################################
+# Crosscheck RMAN backups
+########################################################################
+CrossCheck()
+{
+        rmanc << EOF
+        ALLOCATE CHANNEL FOR MAINTENANCE DEVICE TYPE sbt_tape;
+        CROSSCHECK BACKUP;
+EOF
+}
+
+########################################################################
+# List Backup Summary 
+########################################################################
+BkupSummary()
+{
+        rmanc << EOF
+        LIST BACKUP SUMMARY;
+EOF
+}
+
+########################################################################
+# List Archivelog backups
+########################################################################
+BkupArchive()
+{
+        rmanc << EOF
+        LIST BACKUP OF ARCHIVELOG ALL;
+EOF
+}
+
+########################################################################
+# List Expired backups
+########################################################################
+ListExpired()
+{
+        rmanc << EOF
+        LIST EXPIRED BACKUP;
+EOF
+}
+
+########################################################################
+# List Database Incarnations
+########################################################################
+ListIncarnation()
+{
+        rmanc << EOF
+        LIST INCARNATION;
+EOF
+}
+
+########################################################################
+# List Registered Databases
+########################################################################
+ListRegisteredDb()
+{
+	sqlplus -s "/@RMAN" <<EOF
+	clear buffer
+	set lines 199 pages 80 verify off feed off
+        select * from rc_database;
+EOF
+}
+
+#########################################################################
+# MAIN
+#
+if [ $# -eq 0 ]
+then Usage
+	exit $OK
+fi 
+
+export DB_NAME=$ORACLE_SID
+
+case $1 in
+    -h   ) Usage ;;
+    -p   ) BkupPiece ;;
+    -l   ) LatestBkup ;;
+    -s   ) BkupSummary ;;
+    -arc ) BkupArchive ;;
+    -db  ) ListRegisteredDb ;;
+    -inc ) ListIncarnation ;;
+    -expired ) ListExpired ;; 
+    -crosscheck) CrossCheck ;;
+    -prm ) Parameters ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR 
+           ;;
+  esac

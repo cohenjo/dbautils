@@ -1,0 +1,24 @@
+#!/bin/ksh
+
+export SID=$1
+export USER=$2
+
+        PASSWORD_FILE=/oravl01/oracle/adm/${SID}/create/accts/alt_user_password.sql
+
+        if [ -r $PASSWORD_FILE ]
+        then
+                USER_PASS=`cat $PASSWORD_FILE | awk '{ print $3 ":" $6 }' | sed 's/;//g' | grep "^${USER}:" | awk -F: '{ print $2 }'`
+        else
+                echo "Password file not exist $PASSWORD_FILE"
+                exit 1
+        fi
+
+        if [[ -z $USER_PASS ]]
+        then
+                echo "Password not found in $PASSWORD_FILE"
+                exit 1
+        fi
+
+        echo $USER_PASS
+
+        

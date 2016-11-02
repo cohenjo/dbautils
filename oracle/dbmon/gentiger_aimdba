@@ -1,0 +1,46 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: gentiger_aimdba
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u PASS=`echo $1|cut -d. -f1`
+if [ -z "$PASS" ] 
+then
+  echo "AIM_DBA Password must be provided (system password): \c"; read PASS
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set verify on line 132 feed on pages 300 echo on
+create role tiger_role;
+grant DROP ANY DIRECTORY to tiger_role;
+grant CREATE SEQUENCE to tiger_role;
+grant CREATE TRIGGER to tiger_role;
+grant ALTER SESSION to tiger_role;
+grant CREATE TYPE to tiger_role;
+grant CREATE VIEW to tiger_role;
+grant CREATE TABLE to tiger_role;
+grant CREATE PROCEDURE to tiger_role;
+grant CREATE SYNONYM to tiger_role;
+grant CREATE SESSION to tiger_role;
+grant CREATE DATABASE LINK to tiger_role;
+grant CREATE ANY DIRECTORY to tiger_role;
+grant CREATE MATERIALIZED VIEW to tiger_role;
+grant CREATE ROLE to tiger_role;
+
+create user aim_dba identified by $PASS default tablespace sysaux temporary tablespace temp;
+
+grant GLOBAL QUERY REWRITE to aim_dba with admin option;
+grant ON COMMIT REFRESH to aim_dba with admin option;
+grant QUERY REWRITE to aim_dba with admin option;
+grant UNLIMITED TABLESPACE to aim_dba with admin option;
+grant CREATE USER to aim_dba ;
+grant CREATE TYPE to aim_dba with admin option;
+grant SELECT_CATALOG_ROLE to aim_dba ;
+grant TIGER_ROLE to aim_dba with admin option;
+
+EOF

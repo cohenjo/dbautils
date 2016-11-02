@@ -1,0 +1,65 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  show backup
+#
+#  USAGE: showbackup
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+typeset -u PARAM=`echo $1|cut -d. -f1`
+if [ "$PARAM" = "-A" ]
+then
+        FILTER="IN%"
+else
+        FILTER="%"
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off pages 100 lines 199 trimsp on 
+alter session set nls_date_format='HH24:MI';
+col filename for a40
+col sid format 99999
+col rman_no format 999999 head rman
+col status format a4 trunc head STS
+col open_time for a5 head START 
+col close_time for a5 head CLOSE 
+col elapsed_min for 999 head MIN
+col mb_backed for 99999,999
+col mb_scanned for 99999,999
+col mb_total for 99999,999
+col effct_mb_per_sec for 99999.9 head EFFECT
+col left_min for 999 
+col dist_mb_per_sec for 999.9 head  DIST
+col long_waits for 999,999 head WAITS
+col percent for 999 head "PERC%"
+
+break on report
+compute sum of mb_scanned on report
+compute sum of mb_total on report
+
+select 
+    a.sid,
+    s.set_count rman_no,
+    substr(a.filename,instr (a.filename,'/',-1)+1) filename, 
+    a.status, 
+    a.open_time, 
+    a.elapsed_time/100/60 elapsed_min,
+    s.bytes/1024/1024 mb_backed, 
+    a.bytes/1024/1024 mb_scanned,
+    a.total_bytes/1024/1024 mb_total, 
+    (a.total_bytes-a.bytes)/s.discrete_bytes_per_second/60 left_min, 
+    a.bytes/a.total_bytes*100 percent,
+    a.effective_bytes_per_second/1024/1024 effct_mb_per_sec, 
+    s.discrete_bytes_per_second/1024/1024 dist_mb_per_sec, 
+    a.long_waits
+from 
+    V\$BACKUP_ASYNC_IO a,
+    v\$BACKUP_SYNC_IO s 
+where 
+    a.filename is not null and
+    a.set_count=s.set_count and a.status like '$FILTER' and a.rman_status_recid = (select max(rman_status_recid) from V\$BACKUP_ASYNC_IO)
+order by (a.bytes/a.total_bytes) , a.filename;
+
+EOF
+

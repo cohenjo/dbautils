@@ -1,0 +1,35 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 900 verify off line 132 feed off
+col owner for a15 trunc
+col segment_name for a20 trunc
+col mb for 999,999
+col num_rows for 999,999,999
+break on report
+compute sum of MB on report
+
+select 
+    s.owner,
+    s.segment_name,
+    s.bytes/1024/1024 MB,
+    t.num_rows
+from 
+    dba_segments s,
+    dba_tables t
+where
+    segment_name like '%JMSS%' 
+    and segment_type='TABLE'
+    and t.owner=s.owner 
+    and t.table_name=s.segment_name
+    and bytes>1*1024*1024
+order by 3 desc    ;
+EOF

@@ -1,0 +1,307 @@
+#!/bin/sh 
+
+######################################################################
+# Script:    showrac
+# Author:    Adi Zohar
+#
+#######################################################################
+
+#########################################################################
+# Print script usage
+#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                | Help"
+ echo " -c                | Show CRS status Table Format"
+ echo " -cl               | Show Machine Cluster Information"
+ echo " -i                | Instance Information"
+ echo " -stat             | Database Statistics"
+ echo " -crs              | Show CRS status"
+ echo " -ocr              | Show OCR status"
+ echo "}\n"
+ printf "\n"
+}
+
+
+########################################################################
+# Stats
+########################################################################
+Statistics()
+{
+	sqlplus -s "/ as sysdba" <<EOS
+	set pagesize 20 feedback off verify off lines 199 trimsp on 
+	alter session set nls_date_format='DD-MON-YY HH:MI:SS';
+
+	PROMPT ##################################################################################
+	PROMPT #                                  Instances                                     #
+	PROMPT ##################################################################################
+	set pagesize 20 feedback off verify off lines 150
+	alter session set nls_date_format='DD-MON-YY HH:MI:SS';
+	col inst_id for 999 head Id
+	col instance_name for a10 head Name
+	col host_name for a15
+	col blocked for a7
+
+	select inst_id, instance_name, host_name, version, startup_time, status, archiver, logins, blocked 
+	from gv\$instance 
+	order by inst_id;
+
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT #              RAC cache fusion as  % of total logical reads                     #
+	PROMPT ##################################################################################
+
+	-- The proportion of logical reads resulting in a cache fusion transfer or cache coherency operation.
+	-- Overall indicator of how much work is done at the buffer cache level to maintain the global cache.
+
+	col "GLOBAL CACHE USAGE RATIO %" for 99999,999
+	SELECT a.inst_id "Instance",
+		  ((A.VALUE+B.VALUE)/(C.VALUE+D.VALUE))*100 "GLOBAL CACHE USAGE RATIO %"
+	  FROM gv\$SYSSTAT A, gv\$SYSSTAT B,
+		   gv\$SYSSTAT C, gv\$SYSSTAT D
+	WHERE  A.NAME='gc current blocks received'
+	  AND B.NAME='gc cr blocks received'
+	  AND C.NAME='consistent gets'
+	  AND D.NAME='db block gets'
+	  AND B.INST_ID=A.INST_ID AND C.INST_ID=A.INST_ID
+	  AND D.INST_ID=A.INST_ID ;
+
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT #        % of global blocks that were copied from other instances                #
+	PROMPT ##################################################################################
+
+	-- The proportion of global cache operations resulting in buffer copies from other instances.
+	-- how much blocks in (%) one instance needs from another.
+
+	SELECT a.inst_id "Instance",
+		  ((A.VALUE+B.VALUE)/(A.VALUE+B.VALUE+D.VALUE+C.VALUE))*100 "Fusion Block Hit %"
+	  FROM gv\$SYSSTAT A, gv\$SYSSTAT B,
+		   gv\$SYSSTAT C, gv\$SYSSTAT D
+	WHERE  A.NAME='gc current blocks received'
+	  AND B.NAME='gc cr blocks received'
+	  AND C.NAME='global cache gets'
+	  AND D.NAME='global cache converts' 
+	  AND B.INST_ID=A.INST_ID AND C.INST_ID=A.INST_ID 
+	  AND D.INST_ID=A.INST_ID ;
+	 
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT #     % of hot blocks in global served blocks (Should be less then 30% )         #
+	PROMPT ##################################################################################
+
+	-- Some blocks, those frequently requested by local and remote users, will be hot.  
+	-- If a block is hot, its transfer is delayed for a few milliseconds (default 30)  to allow the local users to complete their work.
+
+	col "Hot Block ratio" for 9999,99
+	select a.inst_id "Instance",a.value "Defers blocks",b.value "Current blocks served",
+		  (a.value/b.value)*100 "Hot Block ratio"
+	from gv\$sysstat a, gv\$sysstat b
+	where a.name='global cache defers'
+	and b.name='global cache current blocks served'
+	and a.inst_id=b.inst_id;
+
+
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT #                               Fusion writes                                    #
+	PROMPT ##################################################################################
+
+	-- When a data block is replaced from the cache due to aging 
+	-- Oracle sends a message to notify the other instance that Oracle will write the data block to disk
+	-- This is called a fusion write 
+	-- Note that a fusion write is not an additional write to disk.
+	-- However, a fusion write requires messaging to coordinate the transfer with the other instance.
+
+	col "Cache Fusion Writes %" for 9999,99
+	SELECT A.inst_id "Instance",
+		   (A.VALUE/B.VALUE)*100 "Cache Fusion Writes %"
+	  FROM gv\$SYSSTAT A,
+		   gv\$SYSSTAT B
+	 WHERE A.name='DBWR fusion writes'
+	   AND B.name='physical writes'
+	   AND B.inst_id=a.inst_id
+	ORDER 
+	   BY A.INST_ID;
+
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT #             AVG CR BLOCK RECEIVE TIME (ms) should be less then 15 ms           #
+	PROMPT ##################################################################################
+
+	col "AVG CR BLOCK RECEIVE TIME (ms)"  for 9999999.9 new_value avg_cr
+	col inst_id for 999
+	set lines 220
+	select b1.inst_id, b2.value "CR BLOCKS RECEIVED", 
+		   ((b1.value / b2.value) * 10) "AVG RECEIVE TIME (ms)"
+	from gv\$sysstat b1, gv\$sysstat b2
+	where b1.name = 'gc cr block receive time' and
+	b2.name = 'gc cr blocks received' and b1.inst_id = b2.inst_id ;
+
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT #          AVG Current block receive time (ms) should be less then 15 ms         #
+	PROMPT ##################################################################################
+
+	COLUMN "AVG CURRENT BLOCK RECEIVE TIME (ms)" format 9999999.9
+	COLUMN inst_id FORMAT 9999
+	SELECT b1.inst_id,
+		   b2.value "CURRENT BLOCKS RECEIVED", 
+		   ((b1.value / b2.value) * 10) "AVG RECEIVE TIME (ms)"
+	 FROM gv\$sysstat b1, gv\$sysstat b2
+	WHERE b1.name = 'gc current block receive time' 
+	  AND b2.name = 'gc current blocks received' 
+	  AND b1.inst_id = b2.inst_id;
+
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT #                         Service block drill down                               #
+	PROMPT ##################################################################################
+
+	-- pin  : The time it takes to pin the current block before shipping it to the requesting instance.
+	-- Pinning is necessary to disallow changes to the block while it is prepared to be shipped to another instance.
+	-- flush: The time it takes to flush the changes to a block to disk (forced log flush), before the block is shipped to the requesting instance.
+	-- send : The time it takes to send the current block to the requesting instance over the interconnect. 
+
+	set lines 250
+	SELECT a.inst_id "Instance",a.value "PIN time",b.value "Flush time",c.value "Send time",d.value "Blocks served",
+		  (((a.value+b.value+c.value)/d.value)*10) "Current Blk Service Time"
+	 FROM gv\$SYSSTAT A,
+		  gv\$SYSSTAT B,
+		  gv\$SYSSTAT C,
+		  gv\$SYSSTAT D
+	WHERE A.name = 'gc current block pin time' 
+	  AND B.name = 'gc current block flush time' 
+	  AND C.name = 'gc current block send time' 
+	  AND D.name = 'gc current blocks served' 
+	  AND B.inst_id = A.inst_id 
+	  AND C.inst_id = A.inst_id 
+	  AND D.inst_id = A.inst_id
+	ORDER
+	   BY a.inst_id; 
+
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT #            Top 10 objects for Consistent read cache fusion transfer            #
+	PROMPT ##################################################################################
+
+	col owner for a15
+	col OBJECT_TYPE for a12
+	set lines 190
+
+	select * from (
+		select OWNER,OBJECT_NAME,OBJECT_TYPE,sum(value) Val
+		from v\$segment_statistics
+		where STATISTIC_NAME='gc cr blocks served'
+		and value >0
+		group by  OWNER,OBJECT_NAME,OBJECT_TYPE
+		order by Val desc )
+		where rownum < 11;
+
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT #         Top 10 objects for Current blocks cache fusion transfer                #
+	PROMPT ##################################################################################
+
+	select * from (
+		select OWNER,OBJECT_NAME,OBJECT_TYPE,sum(value) Val
+		from v\$segment_statistics
+		where STATISTIC_NAME='gc current blocks served'
+		and value >0
+		group by  OWNER,OBJECT_NAME,OBJECT_TYPE
+		order by Val desc )
+		where rownum < 11;
+
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT # Top 10 current objects that were requested by other instances (Check contetion)#
+	PROMPT ##################################################################################
+
+	break on inst_id 
+	select * from (
+	  select inst_id,NAME,KIND,sum(FORCED_READS) "Total outside requests"
+	  from gv\$cache_transfer
+	  group by inst_id,NAME,KIND
+	   order by sum(FORCED_READS) desc)
+	  where rownum < 11
+	  order by inst_id,"Total outside requests";
+
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT #                             Balance status                                     #
+	PROMPT ##################################################################################
+
+	select a.inst_id "Instance",a.value "Logons",b.value "User calls",c.value "Commits"
+		from gv\$sysstat a, gv\$sysstat b, gv\$sysstat c
+		where a.name='logons cumulative'
+		and b.name='user calls'
+		and c.name='user commits'
+		and b.inst_id=a.inst_id
+		and c.inst_id=a.inst_id
+		order by "Instance"; 
+
+	PROMPT 
+	PROMPT ##################################################################################
+	PROMPT #                          Interconnect failures                                 #
+	PROMPT ##################################################################################
+
+	SELECT a.inst_id "Instance",
+		   A.VALUE "GC BLOCKS LOST ",
+		   B.VALUE "GC BLOCKS CORRUPT "
+	  FROM gv\$SYSSTAT A, gv\$SYSSTAT B 
+	 WHERE  A.NAME='gc blocks lost'
+	   AND  B.NAME='gc blocks corrupt'
+	   AND  A.inst_id=B.inst_id;
+
+	PROMPT 
+EOS
+
+}
+########################################################################
+# Instance
+########################################################################
+Instance()
+{
+	sqlplus -s "/ as sysdba" <<EOS
+	set pagesize 20 feedback off verify off lines 150
+	alter session set nls_date_format='DD-MON-YY HH:MI:SS';
+	col inst_id for 999 head Id
+	col instance_name for a10 head Name
+	col host_name for a15
+	col blocked for a7
+
+	select inst_id, instance_name, host_name, version, startup_time, status, archiver, logins, blocked 
+	from gv\$instance 
+	order by inst_id;
+EOS
+}
+
+#########################################################################
+# MAIN
+#
+if [ $# -eq 0 ]
+then Usage
+	exit $OK
+fi 
+
+typeset -u USER_NAME=`echo $2|cut -d. -f1`
+if [ -z "$USER_NAME" ] 
+then
+	export USER_NAME="%"
+fi
+
+case $1 in
+    -h   ) Usage ;;
+    -c   ) crs_stat -v -t ;;
+    -crs ) crs_stat ;;
+    -cl  ) /usr/sbin/cmviewcl ;;
+    -i   ) Instance ;;
+    -stat) Statistics;;
+    -ocr ) ocrcheck ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR 
+           ;;
+  esac

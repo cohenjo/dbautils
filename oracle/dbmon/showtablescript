@@ -1,0 +1,72 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/dbmon/showtablescript
+#  VERSION         : 1.0 
+#  AUTHOR          : Huyen Pham 
+#  DATE            : 01-Jul-2008
+#
+#  This script shows create script for a table
+#
+#  USAGE: showtablescript owner.table_name
+#
+#*****************************************************************************
+
+typeset -u uid=`echo $1|cut -d. -f1`
+typeset -u tab=`echo $1|cut -d. -s -f2`
+if [ -z "$uid" ] 
+then
+  echo "Table owner: \c"; read uid
+fi
+if [ -z "$tab" ]
+then
+  echo "Table name:  \c"; read tab
+fi
+
+TEMP_FILE=/tmp/showtablescript_$$.sql
+
+sqlplus -s "/ as sysdba" <<-EOSQL
+set tab off trims on feedback off
+set pages 999 lines 65
+prompt ********************************************************************************************
+prompt *      Create Table Script for ${uid}.$tab
+prompt ********************************************************************************************
+spool $TEMP_FILE
+set feed off verify off line 132 pages 0 echo off trimspo on long 4000
+
+-- To put semi-colon after each generated SQL statement
+EXECUTE DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM,'SQLTERMINATOR',TRUE);
+-- To omit storage clause in create statements
+EXECUTE DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM,'STORAGE',FALSE);
+
+select dbms_metadata.get_ddl('TABLE','$tab','$uid') from dual;
+prompt **********************************************************
+prompt *      Table Indexes
+prompt **********************************************************
+select DBMS_METADATA.GET_DEPENDENT_DDL('INDEX','$tab','$uid') from dual;
+prompt **********************************************************
+prompt *      Table Constraints
+prompt **********************************************************
+select DBMS_METADATA.GET_DEPENDENT_DDL('CONSTRAINT','$tab','$uid') from dual;
+prompt **********************************************************
+prompt *      Table Grants
+prompt **********************************************************
+select DBMS_METADATA.GET_DEPENDENT_DDL('OBJECT_GRANT','$tab','$uid') from dual;
+prompt **********************************************************
+prompt *      Table Synonyms
+prompt **********************************************************
+select '  CREATE '||decode(owner,'PUBLIC','PUBLIC SYNONYM ','SYNONYM '||owner||'.')||synonym_name
+        ||' for '||table_owner||'.'||table_name||';'
+        from dba_synonyms
+        where
+        table_owner='$uid' and
+        table_name='$tab'
+        order by 1;
+prompt 
+
+EXECUTE DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM,'DEFAULT');
+
+spool off
+quit
+EOSQL
+

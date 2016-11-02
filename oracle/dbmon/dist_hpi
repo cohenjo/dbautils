@@ -1,0 +1,75 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show process information
+#
+#  USAGE: dist file_name
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+FILE_NAME=$1
+NOPARALLEL=$2
+FILE_PATH=`pwd`
+MACHINE_LIST=$ORACLE_MON/dist_machines_hpi.lst
+LOCAL_HOST=`hostname`
+OPT_DIR=
+
+if [ $LOCAL_HOST != 'suito2' ] 
+then
+  echo "Distributed file to HPI should be from suito2"
+  exit 1
+fi
+
+if [ -z "$FILE_NAME" ] 
+then
+  echo "filename must be provided"
+  exit 1
+fi
+
+#================================================
+#check if file exists
+#================================================
+ls $FILE_PATH/$FILE_NAME |wc -l | read file_ok
+if (( $file_ok == "0" )) 
+then
+  exit 1
+fi
+
+#================================================
+# Get oravl for local mochine
+#================================================
+cat ${MACHINE_LIST} | grep $LOCAL_HOST | read MACHINE_NAME TYPE  
+
+cat ${MACHINE_LIST} | grep -v "^#" | while read MACHINE_NAME TYPE
+do
+	printf  "$MACHINE_NAME"
+	if [ $LOCAL_HOST = $MACHINE_NAME ]
+	then
+		echo " - Skipping local host... "
+	else
+		LOCAL_FILE="${FILE_PATH}/${FILE_NAME}"
+		DEST_DIR="${FILE_PATH}"
+
+		#=======================================================
+		#check for logon name, if not oracel then copy as local
+		#=======================================================
+		echo $LOGNAME |grep oracle|wc -l | read logon_oracle
+		if (( $logon_oracle == "0" )) 
+		then
+		  ORACLE_USER=$LOGNAME
+		fi
+
+		echo " - ${FILE_PATH}/${FILE_NAME} "
+                if [ -z "$NOPARALLEL" ]
+                then
+		        (scp -c arcfour -q ${FILE_PATH}/${FILE_NAME} ${ORACLE_USER}@${MACHINE_NAME}:${DEST_DIR} )  &
+                else
+		        (scp -c arcfour -q ${FILE_PATH}/${FILE_NAME} ${ORACLE_USER}@${MACHINE_NAME}:${DEST_DIR} )  
+                fi
+	fi
+done
+printf  "Waiting for distributing to finish..."
+wait
+echo "Done."
+

@@ -1,0 +1,34 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to find objects
+#
+#  USAGE: findobj object_name
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "Object must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 132
+column object_name format a30
+column object_type format a20
+column LAST_DDL_TIME format a20
+column created format a20
+column owner format a26
+select owner,object_name,object_type,  to_char(created,'DD-MON-YYYY HH24:MI') created, 
+to_char(LAST_DDL_TIME,'DD-MON-YYYY HH24:MI') LAST_DDL_TIME 
+from  dba_objects 
+where object_name like upper('%${NAME}%')
+order by 2,3,1
+/
+EOF

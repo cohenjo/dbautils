@@ -1,0 +1,80 @@
+#!/usr/bin/ksh
+#-----------------------------------------------------------------------------#
+#
+# Author : rtatikon
+# Usage  : showtopsids <30> <SID> 
+#        : It will writes top output into file and matches db session
+# Req    : Create global temporary table sample_pids
+#         (pid number, cpu number, command varchar2(20)) on commit delete rows; 
+# Modif  : Dec-3-2008 Removed top and used UNIX95 for quicker o/p      
+#
+#-----------------------------------------------------------------------------#
+
+sqlf=/tmp/toppids.$$.sql
+logf=/tmp/topproc.$$.lst
+typeset -i nproc=${1:-30}
+typeset -u sid=${2:-$ORACLE_SID}
+grepstr="ora_p[0-9]*_${sid}|oracle${sid}"
+
+export ORACLE_SID=$sid
+
+echo "---------------------------------------------------------------------------------------"
+echo "Gathering Top $nproc Processes & Mapping to the $sid db.."
+echo "UPTIME = `uptime`"
+
+echo "Executing top -h -n $nproc -f $logf on $sid "
+/usr/bin/top -h -n $nproc -f $logf 
+echo "---------------------------------------------------------------------------------------"
+
+egrep -i $grepstr $logf | awk '{print $3 " " $1 " " $4 }' | while read my_spid my_cpu my_cmommand 
+do
+    echo "insert into sample_pids values ($my_spid,$my_cpu,'$my_cmommand') ; " >> $sqlf
+    allspids="$my_spid $allspids "
+done
+
+[ -z "$allspids" ] && echo "\n**No Top sessions Found for $sid,Exiting**\n" && exit
+
+echo $allspids | sed -e "s/ /,/g;" | read qallspids 
+echo " set feed off
+   create table sample_pids (pid number, cpu number, command varchar2(100));
+   truncate table sample_pids;
+" | sqlplus -s / > /dev/null
+
+sqlplus -s / <<-EOF
+   set echo off feed off term off 
+   alter session set cursor_sharing =similar;
+   alter session set "_hash_join_enabled" =true;
+   start $sqlf
+
+   set pages 100 lines 199 recsep off trimsp on
+   col cpu for 999.99
+   col sid for 99999
+   col username for a14 trunc
+   col client_info for a25 trunc
+   col program for a37 trunc
+   col osuser for a10
+   col machine for a10
+   col logon_tm for a12
+   col SQL_ID for a13
+   col process for a12
+   col status for a3 trunc head STA
+
+   select /*+ use_hash(s,p,rt) */ 
+   rt.cpu,
+   s.sid ,
+   s.username, 
+   substr(s.osuser ||':'|| s.process ||':'|| replace(replace(s.machine,'.sensis.com.au',''),'DITAD',''),1,30) client_info,
+   s.status,
+   s.program program,
+   to_char(s.logon_time,'dd/mm hh24:mi') logon_tm,
+   p.spid, 
+   s.sql_id
+   from v\$session s, v\$process p, sample_pids rt
+   where p.spid = rt.pid
+   and s.paddr=p.addr 
+   order by rt.cpu desc ;
+EOF
+
+echo "---------------------------------------------------------------------------------------"
+rm -f $logf $sqlf
+

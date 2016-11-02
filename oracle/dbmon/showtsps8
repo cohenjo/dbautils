@@ -1,0 +1,54 @@
+#!/bin/sh
+############################################3
+# showtsps
+# 
+# by Adi Zohar
+# 
+# 01/02/2003
+############################################3
+
+sqlplus -s "/ as sysdba" <<EOF
+set term on
+set feedback off
+set lines 130 pagesize 60 tab off
+
+column MB format 9,999,999  heading "Total MB"
+column free format 9,999,999 heading "Free MB"
+column used format 9,999,999 heading "Used MB"
+column Largest format 999,999 heading "LrgstMB"
+column tablespace_name format a30 heading "Tablespace"
+column status format a4 truncated
+column max_ext format 99,999 heading "MaxExt"
+column pfree format 999 heading "%Free"
+column pct_free format 9,999 heading "%Grow"
+column pc format a9 heading "<25% Grow"
+
+break on report
+compute sum of MB on report
+compute sum of free on report
+compute sum of used on report
+
+select d.tablespace_name, d.status, NVL (a.bytes / 1024 / 1024, 0) MB,
+	NVL (f.bytes / 1024 / 1024, 0) free, 
+	(NVL (a.bytes / 1024 / 1024, 0) - NVL (f.bytes / 1024 / 1024, 0)) used,
+	NVL (l.large / 1024 / 1024, 0) largest, d.MAX_EXTENTS max_ext,
+	round((f.bytes/a.bytes)*100,0) pfree,
+	decode(least(round(f.bytes/(a.bytes-f.bytes)*100,0),1000),1000,1000,round(f.bytes/(a.bytes-f.bytes)*100,0))  pct_free,
+	decode(greatest (round(f.bytes/(a.bytes-f.bytes)*100,0),25),25,'*',' ') "PC"
+	  FROM sys.dba_tablespaces d,
+       (SELECT   tablespace_name, SUM(bytes) bytes
+            FROM dba_data_files
+        GROUP BY tablespace_name) a,
+       (SELECT   tablespace_name, SUM(bytes) bytes
+            FROM dba_free_space
+        GROUP BY tablespace_name) f,
+       (SELECT   tablespace_name, MAX(bytes) large
+            FROM dba_free_space
+        GROUP BY tablespace_name) l
+ WHERE d.tablespace_name = a.tablespace_name(+)
+   AND d.tablespace_name = f.tablespace_name(+)
+   AND d.tablespace_name = l.tablespace_name(+)
+/ 
+exit
+EOF
+

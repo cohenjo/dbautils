@@ -1,0 +1,79 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate kill user 
+#
+#  USAGE: genkillsession username
+#
+#  By Adi Zohar - Sep 2004
+#*****************************************************************************
+
+TEMP_FILE=/tmp/genkilltoad_$$.sql
+TEMP_FILE_LOG=/tmp/genkilltoad_run_$$.sql
+
+sqlplus -s "/ as sysdba" <<-EOSQL
+-- this is called from dba/bin/showtoad
+set feed off tab off
+col sid for 99999
+col serial# for 99999
+col username for a22 head "Oracle User"
+col osuser for a14 trunc
+col machine for a30
+col status for a5 trunc
+col prg_mod for a8 trunc
+alter session set nls_date_format = 'dd-MON:hh24:mi:ss';
+set feed off pages 80 lines 200
+select 
+inst_id,
+SID,
+SERIAL#,
+USERNAME,
+STATUS,
+OSUSER,
+PROCESS,
+MACHINE,
+LOGON_TIME, program||module PRG_MOD
+from gv\$session
+where 
+     (module = 'T.O.A.D.' or upper(program) like 'TOAD%' or  program like '%T.O.A.D%') order by inst_id,sid;
+quit
+EOSQL
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+select 'ALTER SYSTEM KILL SESSION '''||SID||','||SERIAL#||''' immediate;'
+        from V\$SESSION 
+        WHERE ( module = 'T.O.A.D.' or upper(program) like 'TOAD%' or  program like '%T.O.A.D%') 
+order by sid;
+spool off
+EOF
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "ALTER" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes sessions to kill "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+echo "Would you like to execute ? (Y/N) \c"; read Local
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors errors while killing session"
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

@@ -1,0 +1,50 @@
+
+SQL*Loader: Release 8.0.6.3.0 - Production on Mon Feb 17 12:56:28 2003
+
+(c) Copyright 1999 Oracle Corporation.  All rights reserved.
+
+Control File:   /doravl01/oracle/dba/dbmon/help/plushelp.ctl
+Data File:      /doravl01/oracle/dba/dbmon/help/plushelp.ctl
+  Bad File:     /doravl01/oracle/dba/dbmon/help/plushelp.bad
+  Discard File:  none specified
+ 
+ (Allow all discards)
+
+Number to load: ALL
+Number to skip: 0
+Errors allowed: 50
+Bind array:     64 rows, maximum of 65536 bytes
+Continuation:    none specified
+Path used:      Conventional
+
+Table HELP, loaded from every logical record.
+Insert option in effect for this table: APPEND
+TRAILING NULLCOLS option in effect
+
+   Column Name                  Position   Len  Term Encl Datatype
+------------------------------ ---------- ----- ---- ---- ---------------------
+TOPIC                               FIRST     *   ^       CHARACTER            
+SEQ                                  NEXT     *   ^       CHARACTER            
+INFO                                 NEXT     *   ^       CHARACTER            
+
+
+Table HELP:
+  826 Rows successfully loaded.
+  0 Rows not loaded due to data errors.
+  0 Rows not loaded because all WHEN clauses were failed.
+  0 Rows not loaded because all fields were null.
+
+
+Space allocated for bind array:                  65016 bytes(84 rows)
+Space allocated for memory besides bind array:        0 bytes
+
+Total logical records skipped:          0
+Total logical records read:           826
+Total logical records rejected:         0
+Total logical records discarded:        0
+
+Run began on Mon Feb 17 12:56:28 2003
+Run ended on Mon Feb 17 12:56:28 2003
+
+Elapsed time was:     00:00:00.53
+CPU time was:         00:00:00.14    

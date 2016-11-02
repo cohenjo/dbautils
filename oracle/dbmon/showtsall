@@ -1,0 +1,37 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: showtsall role_name
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+export NAME=`echo $1|tr [A-Z] [a-z]`
+if [ -z "$NAME" ] 
+then
+  echo "Tablespace must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set verify off line 132 feed off pages 900
+column mb format 999,999,999
+column blocks format 99,999
+column segment_name format a30 heading "Segment Name"
+column segment_type format a6 heading "Type"
+column tablespace_name format a14 heading "Tablespace"
+column owner format a25
+compute sum of mb on report
+
+select s.owner, decode(segment_type,'LOBSEGMENT',l.table_name,'LOBINDEX',i.table_name,'LOB PARTITION',l.table_name,s.segment_name) segment_name, s.segment_type "Type", s.bytes/1024/1024 MB  
+from 
+    dba_segments s, 
+    dba_lobs l, 
+    dba_lobs i 
+where 
+    s.tablespace_name = upper('$NAME') and
+    s.segment_name = l.segment_name (+) and  
+    s.segment_name = i.index_name (+)  
+order by s.bytes desc, s.segment_name;
+EOF

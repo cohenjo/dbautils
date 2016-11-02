@@ -1,0 +1,84 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to generate database links for the instance
+#
+#  USAGE: gendblinks_script 
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+
+echo "set time off timing off echo off lines 900 trimsp on feed off pages 0
+COL owner FORMAT A50
+COL db_link_name FORMAT A50
+col userid format a50
+col password format a50
+col host format a200
+select 
+	u.username owner,
+	name db_link_name,
+	userid,
+	t.passwordx,
+	host,
+	decode(dsp.grantee,null,'NO','YES') priv 
+from 
+	sys.link\$ t,
+	dba_users u,
+	dba_sys_privs dsp
+where 
+	  owner#=u.user_id and
+	  u.username = grantee (+) and
+	  (privilege (+) = 'CREATE DATABASE LINK')  
+union all
+select 
+	'PUBLIC' owner,
+	name db_link_name,
+	userid,
+	t.passwordx,
+	host,
+    'YES' priv 
+from sys.link\$ t
+where owner#=1; 
+" | sqlplus -s "/ as sysdba" | while read OWNER DBLINK_NAME USERNAME PASSWORDX HOST PRIV
+do
+	#get the new password
+	#--------------------------------
+	echo " "
+	PASS_MASSAGE=" "
+	cat -s ~/adm/${HOST}/create/*/alt_user_password.sql | awk '{ print $3 " " $6 }' | grep -i "^${USERNAME} " | awk '{ print $2 }' | sed 's/;//g' | read NEW_PASS
+	if [ "$NEW_PASS " = " " ]
+	then
+		NEW_PASS=" values '$PASSWORDX'"
+		echo "-- *****************************************************************************"
+		echo "-- *** Couldn't find the new password *** for ${USERNAME}" using existance one
+		echo "-- *****************************************************************************"
+	fi
+
+	#create the script
+	#----------------------------------
+	if [ $OWNER = "PUBLIC" ]
+	then
+		echo "conn / "
+		echo "drop public database link $DBLINK_NAME ;"
+		echo "create public database link $DBLINK_NAME connect to $USERNAME identified by $NEW_PASS using '$HOST'; "
+		echo "select * from dual@${DBLINK_NAME}; "
+	else
+		if [ $PRIV = "NO" ] 
+		then
+			echo "conn /"
+			echo "grant CREATE DATABASE LINK to $OWNER ;"
+		fi
+		echo "@\$AUTO_CONN $OWNER "
+		echo "drop database link $DBLINK_NAME ;"
+		echo "create database link $DBLINK_NAME connect to $USERNAME identified by $NEW_PASS using '$HOST'; "
+		echo "select * from dual@${DBLINK_NAME}; "
+		if [ $PRIV = "NO" ] 
+		then
+			echo "conn /"
+			echo "revoke CREATE DATABASE LINK from $OWNER ;"
+		fi
+	fi
+
+done
+

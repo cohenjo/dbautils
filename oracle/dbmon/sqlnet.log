@@ -1,0 +1,38 @@
+
+
+***********************************************************************
+Fatal NI connect error 12537, connecting to:
+ (DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(Host=sucn02)(Port=1521))(CONNECT_DATA=(SID=IAMCN4)(CID=(PROGRAM=sqlplus@sudv01)(HOST=sudv01)(USER=oracle))))
+
+  VERSION INFORMATION:
+	TNS for HPUX: Version 10.2.0.4.0 - Production
+	TCP/IP NT Protocol Adapter for HPUX: Version 10.2.0.4.0 - Production
+  Time: 11-FEB-2009 01:28:28
+  Tracing not turned on.
+  Tns error struct:
+    ns main err code: 12537
+    TNS-12537: TNS:connection closed
+    ns secondary err code: 12560
+    nt main err code: 507
+    TNS-00507: Connection closed
+    nt secondary err code: 0
+    nt OS err code: 0
+
+
+***********************************************************************
+Fatal NI connect error 12170.
+
+  VERSION INFORMATION:
+	TNS for HPUX: Version 10.2.0.4.0 - Production
+	TCP/IP NT Protocol Adapter for HPUX: Version 10.2.0.4.0 - Production
+  Time: 01-JUL-2009 17:36:26
+  Tracing not turned on.
+  Tns error struct:
+    ns main err code: 12535
+    TNS-12535: TNS:operation timed out
+    ns secondary err code: 12560
+    nt main err code: 505
+    TNS-00505: Operation timed out
+    nt secondary err code: 238
+    nt OS err code: 0
+  Client address: <unknown>

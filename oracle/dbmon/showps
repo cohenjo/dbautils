@@ -1,0 +1,95 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/bin/showps
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Kuen-Yih Chang (kchang@amdocs.com)
+#  DATE            : $Date: Mon Feb 25 16:12:22 CST 2002 $
+#
+#  This script is used to show related process id
+#
+#  USAGE: showps [ -l logfile ] [ -t timestamp ] pid
+#
+#  Options: 
+#	-l: instead of searching from ps -ef, use this file
+#	-t: inside the logfile, timestamp is YYYYMMDD HH24:MI
+#    These 2 options will make use of the ~/prd/bin/pslog output.
+#
+#  Example:
+#
+#*****************************************************************************
+
+while getopts l:t: flag
+do
+  case $flag in
+  l)
+    LOG=$OPTARG ;;
+  t)
+    tm=$OPTARG  ;;
+  esac
+done  
+shift $(($OPTIND -1))
+
+if [ -z "$LOG" ]
+then
+  LOG=/tmp/$$.pid
+  ps -ef > $LOG
+else
+  if [ -z "$tm" ]
+  then
+    cp $LOG /tmp/$$.pid
+  else
+    sed -n "/^------------------ processes running  on $tm /,/^-------/ p" $LOG >| /tmp/$$.pid
+  fi
+  LOG=/tmp/$$.pid
+fi
+PIF=/tmp/$$.pif
+
+listps(){
+
+echo "\n## List of processes for $pid:"
+
+while [ $pid -gt 1 ] 2>/dev/null
+do
+  awk -v pid=$pid '{ if ( $2 == pid ) print }' $LOG
+  awk -v pid=$pid '{ if ( $2 == pid ) print }' $LOG | read uid opid pid dummy
+done | nl | sort -r | cut -c8- | tee -a $PIF
+
+while [ ! -z "$ppid" ]
+do
+  awk -v ppid=$ppid '{ if ( $3 == ppid ) print }' $LOG | grep -v $$
+  awk -v ppid=$ppid '{ if ( $3 == ppid ) print }' $LOG | grep -v $$ | read uid ppid opid dummy
+done | tee -a $PIF
+
+}
+
+if [ $# -gt 0 ]
+then
+  if echo $1 | grep "[A-Za-z]" 1>/dev/null 2>&1
+  then
+  ## look for process name
+    grep $1 $LOG | grep -v showps | sort -k2n,2 | while read uid pid dummy
+    do
+      ppid=$pid
+      grep " $pid " $PIF > /dev/null 2>&1  && continue 
+      listps
+    done
+  else
+  ## look for process id
+    pid=$1
+    ppid=$pid
+    listps
+  fi
+else
+  pid=1
+  awk -v pid=$$ '{ if ( $2 == pid ) print }' $LOG | read uid opid ppid dummy
+  listps
+fi
+
+# prepare to kill process from this PIF file
+# cat $PIF
+test -s $PIF
+rc=$?
+rm -f $LOG $PIF
+return $rc
+

@@ -1,0 +1,1 @@
+sudo /usr/local/nwg_bcv_synch_status.sh $1

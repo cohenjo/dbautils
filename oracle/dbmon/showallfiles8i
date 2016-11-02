@@ -1,0 +1,51 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all datafiles for 8i
+#
+#  USAGE: showallfiles8i
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+sqlplus -s / <<EOF
+set line 132
+set pagesize 90
+set echo off
+set feedback off
+set verify off
+
+column name format a45
+column type format a5
+column bytes format 999.9
+column MB format 9,999,999
+column phywrts format 9,999,999
+column phyrds format 99,999,999
+column status for a3 truncate
+column tablespace_name format a25 Heading Tablespace
+
+break on report
+
+compute sum of MB on report
+
+(select substr(file_name,1,60) As "File Path", 
+     bytes/1024/1024 As Mb,'data' as type,
+     tablespace_name 
+from dba_data_files
+union
+select substr(file_name,1,60) As "File Path",
+     bytes/1024/1024 As Mb,'temp' as type,
+     tablespace_name
+from dba_temp_files)
+union
+select substr(a.member,1,60) as "File Path", 
+        bytes/1024/1024 as Mb,'redo' as type,  
+        'REDO LOG' as tablespace_name
+from v\$logfile a, v\$log l 
+where a.group#=l.group#
+order by 3,1 
+/
+column control format a60
+
+select name control from v\$controlfile;
+EOF

@@ -1,0 +1,55 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to find index
+#
+#  USAGE: findind index
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+echo "Preparing Script for check synonym..."
+echo "-------------------------------------"
+sqlplus -s "/ as sysdba" <<EOF >>/dev/null
+set pages 0 
+set lines 200
+col TABLE_NAME format a20 heading "Synonym/Table Name"
+col TABLE_OWNER format a20 heading "Owned by ..."
+
+set echo off
+set feedback off
+set termout off
+
+spool /tmp/chk_inter_syns_pub_$$.sql
+select 'prompt --.'|| chr(13) || chr(10) || 'select ' || chr(39)|| 'Checking Public Synonym '||SYNONYM_NAME||' -> '||table_owner||'.'||table_name||'@'||db_link||' - ok'||
+ chr(39)||' from dual@' || db_link || ';' 
+from dba_synonyms where owner='PUBLIC' and (table_owner is null or table_owner not in ('PERFSTAT','QCO','SYS','SYSTEM','OPS\$ORACLE','OPS\$DORACLE')) and db_link is not NULL; 
+
+select ' @$AUTO_CONN '  || OWNER || chr(13) || chr(10)  ||
+'prompt --.'|| chr(13) || chr(10) ||
+ 'select ' || chr(39)|| 'Checking Synonym '||OWNER||'.'||SYNONYM_NAME||' -> '||table_owner||'.'||table_name||'@'||db_link||' - ok'||
+ chr(39)||' from dual@' || db_link || ';' 
+from dba_synonyms where owner<>'PUBLIC' and (table_owner is null or table_owner not in ('PERFSTAT','QCO','SYS','SYSTEM','OPS\$ORACLE','OPS\$DORACLE')) and db_link is not NULL; 
+spool off
+EOF
+
+sqlplus -s "/ as sysdba" <<EOF | egrep 'Invalid|select |ORA-|\-\-' 
+set pages 0 
+set lines 200
+col TABLE_NAME format a20 heading "Synonym/Table Name"
+col TABLE_OWNER format a20 heading "Owned by ..."
+
+set echo off
+set feedback off
+set termout on 
+select 'Invalid Synonym '||owner||'.'||synonym_name||' -> '||table_owner||'.'||table_name from 
+dba_synonyms where (table_name,table_owner) in (
+select TABLE_NAME,TABLE_OWNER from dba_synonyms where table_owner not in ('PERFSTAT','QCO','SYS','SYSTEM','OPS\$ORACLE','OPS\$DORACLE') and db_link is NULL 
+minus 
+select object_name,owner from dba_objects 
+);
+set pages 0
+@/tmp/chk_inter_syns_pub_$$.sql
+exit
+EOF
+rm -f /tmp/chk_inter_syns_pub_$$.sql

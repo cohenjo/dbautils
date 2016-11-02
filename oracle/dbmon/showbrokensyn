@@ -1,0 +1,43 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 1000 verify off line 192 feed off trimsp on 
+
+        column synonym_name format a50
+        column synonym_dest format a70
+        column a format a5 heading ''
+        select * from 
+        (
+                select owner||'.'||synonym_name as synonym_name,' --> ' as a ,table_owner||decode(table_owner,null,'','.')||table_name as synonym_dest 
+                from dba_synonyms ds
+                where   
+                db_link is null
+                and not exists
+                (
+                        select 1
+                        from dba_objects o,
+                                 dba_tab_privs p
+                           where ds.table_owner=o.owner
+                                 and ds.table_name=o.object_name
+                                 and o.owner=p.owner
+                                 and o.object_name=p.table_name
+                                 and (p.grantee=ds.owner or p.grantee IN (select granted_role from dba_role_privs r where r.grantee=ds.owner))
+                                 and p.grantor=o.owner
+                )
+                and (owner like '%USER%' or owner like '%WORK' or owner like '%READ%' or owner in ('PUBLIC','REF_APPL','REF_UPDATE'))
+                and owner not in ('SYS','SYSTEM','CTXSYS','QCO','XDB','OUTLN','DIP','ORACLE_OCM','CNV_DOWNLOAD_BATCH','GEN_QUERY_USER')
+                and owner not like 'INDEPTH%' 
+                and owner not like 'SENSIS%' 
+                and table_owner not in ('SYS','CTXSYS','SYSTEM')
+        )
+        order by 3,1;
+
+EOF

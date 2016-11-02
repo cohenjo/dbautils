@@ -1,0 +1,39 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to grant privs to role 
+#
+#  USAGE: gentsps_resize tsps size
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u TSPS=`echo $1|cut -d. -f1`
+typeset -u SIZE=`echo $2|cut -d. -f1`
+if [ -z "$TSPS" ] 
+then
+  echo "Tablespace must be provided: \c"; read TSPS
+fi
+
+if [ -z "$SIZE" ] 
+then
+  echo "SIZE must be provided: \c"; read SIZE
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off verify off line 132 pages 1000 echo off trimspo on
+col file_name for a70
+col tablespace_name for a20
+col mb for 9,999,999
+select tablespace_name,file_name, bytes/1024/1024 mb from dba_data_files where tablespace_name like '${TSPS}%' order by 1,2;
+EOF
+
+echo .
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off verify off line 132 pages 0 echo off trimspo on
+col file_name for a70
+col mb for 9,999,999
+select 'alter database datafile '''||file_name||''' resize $SIZE ;' from dba_data_files where tablespace_name like '${TSPS}%' order by 1;
+EOF
+

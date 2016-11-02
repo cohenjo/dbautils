@@ -1,0 +1,16 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+drop procedure SYS.CONVERSION_DROP_PK;
+drop PROCEDURE SYS.CONVERSION_DROP_IX;
+drop PROCEDURE SYS.CONVERSION_ALIGN_SEQ;
+drop PROCEDURE SYS.CONVERSION_TRUNCATE;
+EOF

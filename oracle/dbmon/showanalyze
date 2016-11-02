@@ -1,0 +1,32 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showanaylze
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed off
+column owner format a32
+column table_name format a26
+column index_name format a26
+column last_analyzed format a20
+column tables format 999,999,999
+select owner,nvl(to_char(trunc(last_analyzed),'DD/MM/YYYY'),'Not Analyzed') last_analyzed ,count(*) tables from dba_tables where owner not in ('SYS','SYSTEM','DBSNMP','TOAD','OPS$ORACLE','OPS$DORACLE')
+group by owner,trunc(last_analyzed)
+order by 1,2;
+prompt ==========================================================================================
+prompt =                             Table+Indexes not analyzed
+prompt ==========================================================================================
+select owner,table_name,'<-- table' index_name from dba_tables where owner not in ('SYS','SYSTEM','DBSNMP','TOAD','OPS$ORACLE','OPS$DORACLE')
+and last_analyzed is null
+union all 
+select owner,table_name,index_name from dba_indexes where owner not in ('SYS','SYSTEM','DBSNMP','TOAD','OPS$ORACLE','OPS$DORACLE')
+and last_analyzed is null
+order by 1,2;
+
+
+EOF

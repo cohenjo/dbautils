@@ -1,0 +1,23 @@
+#!/bin/sh
+############################################
+# showdns
+############################################
+if (( $# != 1 ))
+then
+        echo "usage:   $0 subnet"
+        echo "example: $0 10.100.1.0"
+        exit 1
+fi
+export DNS_START=0
+export DNS_END=255
+export DNS=`echo $1 | cut -d. -f1-3`
+
+i=$DNS_START
+while (( i <= $DNS_END ))
+do
+        IP="${DNS}.$i"
+        printf "%-12s -" $IP
+        host $IP | awk -Fpointer '{ print $2 }'
+        (( i = i + 1 ))
+done
+

@@ -1,0 +1,184 @@
+#!/bin/ksh
+if [ $# -lt 1 ]
+   then
+	echo 
+	echo showgrowth Database 
+	echo Example:
+	echo showgrowth IAMPR4 
+	exit 1
+   fi
+
+export TEMP_TABLE_NAME=TEMP_SEGMENT_ST_STS_$$
+export DB_NAME=$1
+export STATS_LOGIN=dba_stats/TABASOLJ1249@DITOEM
+
+echo Running Growth report for $DB_NAME
+echo temptable used: $TEMP_TABLE_NAME
+
+sqlplus -s $STATS_LOGIN <<EOF
+set pages 200
+set feed off tab off lines 132
+
+create table $TEMP_TABLE_NAME 
+as
+SELECT 
+  tablespace_name,
+  to_char(stats_date,'YY') stat_year,
+  to_char(stats_date,'MM') stat_month,
+  trunc(sum(used_mb)) used
+FROM 
+  dba_stats.TABLESPACE_STATS
+WHERE 
+  db_name='$DB_NAME' and
+  stats_date>sysdate-400
+group by tablespace_name, stats_date;
+
+create index ${TEMP_TABLE_NAME}_1IX on $TEMP_TABLE_NAME (tablespace_name,stat_year,stat_month,used);
+create index ${TEMP_TABLE_NAME}_2IX on $TEMP_TABLE_NAME (stat_year,stat_month);
+
+--drop duplicates
+--------------------
+delete from 
+	   $TEMP_TABLE_NAME 
+where rowid in (
+	  select a_rowid from (
+	  		 select tablespace_name,stat_year,stat_month,max(rowid) a_rowid 	
+			 from $TEMP_TABLE_NAME
+			 group by  tablespace_name,stat_year,stat_month
+			 having count(*) > 1)
+		);
+
+commit;
+EOF
+
+echo "set pages 0 feed off echo off verify off
+select STAT_YEAR, STAT_MONTH, ROWNUM
+from (
+	 select /*+ index (a, ${TEMP_TABLE_NAME}_2IX ) */ 
+	distinct STAT_YEAR, STAT_MONTH
+	from $TEMP_TABLE_NAME a 
+	where stat_year > '00' 
+)	 
+where rownum<=12
+/ " | sqlplus -s $STATS_LOGIN | while read YEAR MONTH ROW_NUM
+do
+	export Y${ROW_NUM}=$YEAR
+	export M${ROW_NUM}=$MONTH
+done
+
+echo "Generating Report on $DB_NAME for months ${M1}/${Y1}, ${M2}/${Y2}, ${M3}/${Y3}, ${M4}/${Y4}, ${M5}/${Y5}, ${M6}/${Y6}, ${M7}/${Y7}, ${M8}/${Y8}, ${M9}/${Y9}, ${M10}/${Y10}, ${M11}/${Y11}, ${M12}/${Y12} "
+
+sqlplus -s $STATS_LOGIN <<EOF
+col db_name for a8 
+col tablespace_name for a20 trunc
+set echo off lines 199 trimspo on feed off verify off pages 999
+
+drop index ${TEMP_TABLE_NAME}_2IX;
+
+create table ${TEMP_TABLE_NAME}_TS
+as
+SELECT 
+  DISTINCT tablespace_name, 
+  0${Y1} Y1,  0${M1}  M1 , 
+  0${Y2} Y2,  0${M2}  M2 , 
+  0${Y3} Y3,  0${M3}  M3 , 
+  0${Y4} Y4,  0${M4}  M4 , 
+  0${Y5} Y5,  0${M5}  M5 , 
+  0${Y6} Y6,  0${M6}  M6 , 
+  0${Y7} Y7,  0${M7}  M7 , 
+  0${Y8} Y8,  0${M8}  M8 , 
+  0${Y9} Y9,  0${M9}  M9 , 
+  0${Y10} Y10, 0${M10} M10, 
+  0${Y11} Y11, 0${M11} M11, 
+  0${Y12} Y12, 0${M12} M12
+FROM 
+  ${TEMP_TABLE_NAME};
+
+col "${M1}/${Y1}"   for 9999,999 
+col "${M2}/${Y2}"   for 9999,999 
+col "${M3}/${Y3}"   for 9999,999 
+col "${M4}/${Y4}"   for 9999,999 
+col "${M5}/${Y5}"   for 9999,999 
+col "${M6}/${Y6}"   for 9999,999 
+col "${M7}/${Y7}"   for 9999,999 
+col "${M8}/${Y8}"   for 9999,999 
+col "${M9}/${Y9}"   for 9999,999 
+col "${M10}/${Y10}" for 9999,999 
+col "${M11}/${Y11}" for 9999,999 
+col "${M12}/${Y12}" for 9999,999 
+col "Avg_Mnt" for 9999,999 
+
+break on report
+compute sum of "${M1}/${Y1}" on report
+compute sum of "${M2}/${Y2}" on report
+compute sum of "${M3}/${Y3}" on report
+compute sum of "${M4}/${Y4}" on report
+compute sum of "${M5}/${Y5}" on report
+compute sum of "${M6}/${Y6}" on report
+compute sum of "${M7}/${Y7}" on report
+compute sum of "${M8}/${Y8}" on report
+compute sum of "${M9}/${Y9}" on report
+compute sum of "${M10}/${Y10}" on report
+compute sum of "${M11}/${Y11}" on report
+compute sum of "${M12}/${Y12}" on report
+
+
+select a00.tablespace_name, 
+	   a01.used "${M1}/${Y1}",  
+	   a02.used "${M2}/${Y2}",  
+	   a03.used "${M3}/${Y3}",  
+	   a04.used "${M4}/${Y4}",  
+	   a05.used "${M5}/${Y5}",  
+	   a06.used "${M6}/${Y6}",  
+	   a07.used "${M7}/${Y7}",  
+	   a08.used "${M8}/${Y8}",  
+	   a09.used "${M9}/${Y9}",  
+	   a10.used "${M10}/${Y10}",
+	   a11.used "${M11}/${Y11}",
+	   a12.used "${M12}/${Y12}",
+	   (a12.used-a09.used)/4 "Avg_Mnt" 
+from
+	${TEMP_TABLE_NAME}_TS a00,
+	$TEMP_TABLE_NAME a01,
+	$TEMP_TABLE_NAME a02,
+	$TEMP_TABLE_NAME a03,
+	$TEMP_TABLE_NAME a04,
+	$TEMP_TABLE_NAME a05,
+	$TEMP_TABLE_NAME a06,
+	$TEMP_TABLE_NAME a07,
+	$TEMP_TABLE_NAME a08,
+	$TEMP_TABLE_NAME a09,
+	$TEMP_TABLE_NAME a10,
+	$TEMP_TABLE_NAME a11,
+	$TEMP_TABLE_NAME a12
+where 
+	  a00.tablespace_name=a01.tablespace_name (+) and	
+	  a00.tablespace_name=a02.tablespace_name (+) and	
+	  a00.tablespace_name=a03.tablespace_name (+) and	
+	  a00.tablespace_name=a04.tablespace_name (+) and	
+	  a00.tablespace_name=a05.tablespace_name (+) and	
+	  a00.tablespace_name=a06.tablespace_name (+) and	
+	  a00.tablespace_name=a07.tablespace_name (+) and	
+	  a00.tablespace_name=a08.tablespace_name (+) and	
+	  a00.tablespace_name=a09.tablespace_name (+) and	
+	  a00.tablespace_name=a10.tablespace_name (+) and	
+	  a00.tablespace_name=a11.tablespace_name (+) and	
+	  a00.tablespace_name=a12.tablespace_name (+) and
+	  a00.m1  = a01.stat_month (+) and a00.y1  = a01.stat_year (+) and	
+	  a00.m2  = a02.stat_month (+) and a00.y2  = a02.stat_year (+) and	
+	  a00.m3  = a03.stat_month (+) and a00.y3  = a03.stat_year (+) and	
+	  a00.m4  = a04.stat_month (+) and a00.y4  = a04.stat_year (+) and	
+	  a00.m5  = a05.stat_month (+) and a00.y5  = a05.stat_year (+) and	
+	  a00.m6  = a06.stat_month (+) and a00.y6  = a06.stat_year (+) and	
+	  a00.m7  = a07.stat_month (+) and a00.y7  = a07.stat_year (+) and	
+	  a00.m8  = a08.stat_month (+) and a00.y8  = a08.stat_year (+) and	
+	  a00.m9  = a09.stat_month (+) and a00.y9  = a09.stat_year (+) and	
+	  a00.m10 = a10.stat_month (+) and a00.y10 = a10.stat_year (+) and	
+	  a00.m11 = a11.stat_month (+) and a00.y11 = a11.stat_year (+) and	
+	  a00.m12 = a12.stat_month (+) and a00.y12 = a12.stat_year (+) 
+order by 1;
+drop table $TEMP_TABLE_NAME;
+drop table ${TEMP_TABLE_NAME}_TS;
+EOF
+
+exit

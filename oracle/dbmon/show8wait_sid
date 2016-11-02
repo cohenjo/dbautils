@@ -1,0 +1,44 @@
+#!/bin/sh
+############################################3
+# show8wait_sid sid
+# 
+# by Adi Zohar
+# 
+# 01/12/1005
+############################################3
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "Wait SID must be provided: \c"; read NAME
+fi
+
+# Get Object Details
+#----------------------------
+sqlplus -s "/ as sysdba" <<EOF
+set echo on feed off pages 100 lines 199 trimsp on 
+col object_name format a30
+col locked_block format 999,999,999
+col block_row format 999,999,999
+col sid format 999,999
+select sid, object_name, row_wait_block# locked_block,row_wait_row# block_row
+FROM 
+	 V\$SESSION,
+	 (SELECT OBJECT_NAME FROM DBA_OBJECTS WHERE OBJECT_ID in (select ID1 FROM V\$LOCK WHERE TYPE = 'TM' AND SID = $NAME)) 
+WHERE sid=$NAME;
+EOF
+
+echo "
+set time off timing off echo off feed off pages 0 lines 199
+select object_name, row_wait_block# lock_block,row_wait_row# lock_row
+FROM 
+	 V\$SESSION,
+	 (SELECT OBJECT_NAME FROM DBA_OBJECTS WHERE OBJECT_ID in (select ID1 FROM V\$LOCK WHERE TYPE = 'TM' AND SID = $NAME)) 
+WHERE sid=$NAME;
+" |sqlplus -s "/ as sysdba" |read OBJECT_NAME BLOCK ROW
+
+echo ""
+echo "To find the locked row please run the query below, prefer on BCV (may take a while)"
+echo "=========================================================================================="
+echo "select rowid from $OBJECT_NAME where dbms_rowid.rowid_block_number(rowid)=$BLOCK and dbms_rowid.rowid_row_number(rowid)=$ROW; "
+

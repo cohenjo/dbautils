@@ -1,0 +1,80 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+CREATE USER DBI_TEMP_USER
+  IDENTIFIED BY DBI_TEMP_USER_AJSUEJ
+  DEFAULT TABLESPACE POOL_DATA
+  TEMPORARY TABLESPACE TEMP
+  PROFILE DEFAULT
+  ACCOUNT UNLOCK;
+
+  grant CONNECTOR_ROLE to DBI_TEMP_USER;
+  GRANT RESOURCE TO DBI_TEMP_USER;
+  ALTER USER DBI_TEMP_USER DEFAULT ROLE ALL;
+  grant select on v_\$session to DBI_TEMP_USER;
+  grant select on dba_segments to DBI_TEMP_USER;
+
+  -- Normal Access to all Tables
+
+  revoke UPDATE ANY TABLE from DBI_TEMP_USER;
+  revoke INSERT ANY TABLE from DBI_TEMP_USER;
+  revoke SELECT ANY TABLE from DBI_TEMP_USER;
+  revoke DELETE ANY TABLE from DBI_TEMP_USER;
+  revoke SELECT ANY SEQUENCE from DBI_TEMP_USER;
+  revoke LOCK ANY TABLE from DBI_TEMP_USER;
+  revoke NO_TOAD_ROLE from DBI_TEMP_USER;
+  revoke SELECT_CATALOG_ROLE from DBI_TEMP_USER;
+  revoke CONNECT from DBI_TEMP_USER;
+
+-- Grant all Roles
+  grant AAM_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant ACMS_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant ADS_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant AFL_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant AUTHWORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant BIL_WORK_MASTER_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant BIL_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant CGS_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant CYP_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant DLV_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant DM_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant EAI_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant EPR_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant HM_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant IM_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant NTF_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant PARAM_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant PDLM_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant PD_WORK_MASTER_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant PD_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant REFCORE_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant REFWORK_MASTER_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant REFWORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant REF_APPL_MASTER_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant REF_APPL_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant SO_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant SP_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant UAMS_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant AFL_WLI_USER_UPDATOR_ROLE to DBI_TEMP_USER;
+  grant RPX_WORK_UPDATOR_ROLE to DBI_TEMP_USER;
+  
+  GRANT execute on DBMS_SNAPSHOT to DBI_TEMP_USER;
+
+alter user DBI_TEMP_USER quota unlimited on conv_data;
+alter user DBI_TEMP_USER quota unlimited on pool_data;
+alter USER DBI_TEMP_USER default tablespace conv_data;
+
+revoke OP_WORK_UPDATOR_ROLE from DBI_TEMP_USER;
+
+EOF
+add_to_alt_user_password.sh DBI_TEMP_USER
+gencreateappsynonym DBI_TEMP_USER
+

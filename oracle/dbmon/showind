@@ -1,0 +1,72 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/dbmon/showtable
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Kuen-Yih Chang (kchang@amdocs.com) shell
+#  AUTHOR          : Adi Zohar (adizo@amdocs.com) SQL
+#  DATE            : $Date: Tue Nov  5 21:56:55 CST 2002 $
+#
+#  This script is used to describe table definitions from sys objects 
+#  very fast on large database
+#
+#  USAGE: showtable owner.table_name
+#
+#*****************************************************************************
+
+typeset -u uid=`echo $1|cut -d. -f1`
+typeset -u tab=`echo $1|cut -d. -s -f2`
+if [ -z "$uid" ] 
+then
+  echo "Table owner: \c"; read uid
+fi
+if [ -z "$tab" ]
+then
+  echo "Table name:  \c"; read tab
+fi
+
+echo "
+prompt ************************************************************************************************************************
+prompt *                                                    Indexes                                                           *
+prompt ************************************************************************************************************************
+set tab off trims on feedback off
+set pages 999 lines 200 trimsp on long 1000000
+
+break on index_name nodup on uniqueness nodup
+col function                    for a200
+col index_name			for a35
+col column_name			for a30
+col POS				for 999
+col uniqueness			for a3 trunc
+set lines 300 trimsp on 
+
+select  
+        ix.index_name, ix.uniqueness, ic.column_position POS, ic.column_name,null as function
+from 
+        dba_indexes ix, dba_ind_columns ic
+where
+  ix.table_name = '$tab' and ix.table_owner = '$uid' and 
+  ix.table_name = ic.table_name and
+  ix.table_owner = ic.table_owner and
+  ic.index_name = ix.index_name and
+  ix.funcidx_status is null 
+union all 
+select 
+    ix.index_name,ix.uniqueness, ic.column_position as POS, nvl(ITYP_NAME,ic.column_name) as column_name, die.column_expression
+from
+    dba_indexes ix,
+    DBA_IND_EXPRESSIONS die,
+    dba_ind_columns ic
+where 
+    ix.table_name = '$tab' and ix.table_owner = '$uid' and 
+    ix.funcidx_status='ENABLED' and
+    ix.table_name  = ic.table_name and
+    ix.table_owner = ic.table_owner and
+    ix.index_name  = ic.index_name and 
+    ic.index_name  = die.index_name (+) and
+    ic.index_owner = die.index_owner (+) and
+    ic.column_position = die.column_position(+) 
+order by 1, 3 ;
+" | sqlplus -s "/ as sysdba" | sed -e 's/\"//g' -e 's/SYS.XMLTYPE.//g' -e 's/SYS_MAKEXML(SYS_NC00008$),//g' -e 's/------------------------------------------------------------/--/g'
+
+

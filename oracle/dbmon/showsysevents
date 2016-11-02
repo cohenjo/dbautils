@@ -1,0 +1,25 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all system events
+#
+#  USAGE: showsysevents
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+
+set pages 200 lines 132 trimspo on 
+set serveroutput on
+declare event_level number;
+begin
+for i in 100..20999 loop
+sys.dbms_system.read_ev(i,event_level);
+if (event_level > 0) then
+dbms_output.put_line('Event '||to_char(i)||' set at level '||
+to_char(event_level));
+end if;
+end loop;
+end;
+/
+EOF

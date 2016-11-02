@@ -1,0 +1,3 @@
+select name, setting, boot_val, unit
+from pg_settings
+where name like '%'||:v||'%'; 

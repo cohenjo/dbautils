@@ -1,0 +1,82 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+CREATE USER GEN_QUERY_USER
+  IDENTIFIED BY V162_QUERY
+  DEFAULT TABLESPACE POOL_DATA
+  TEMPORARY TABLESPACE TEMP
+  PROFILE DEFAULT
+  ACCOUNT UNLOCK;
+
+  GRANT CONNECT TO GEN_QUERY_USER;
+  GRANT SELECT_CATALOG_ROLE TO GEN_QUERY_USER;
+  REVOKE SELECT ANY TABLE from GEN_QUERY_USER;
+  grant AAM_WORK_QUERY_ROLE to gen_query_user;
+  grant ACMS_WORK_QUERY_ROLE to gen_query_user;
+  grant ADS_WORK_QUERY_ROLE to gen_query_user;
+  grant AFL_WORK_QUERY_ROLE to gen_query_user;
+  grant AUTHWORK_QUERY_ROLE to gen_query_user;
+  grant BC_ALFRESCO_WORK_QUERY_ROLE to gen_query_user;
+  grant BIL_WORK_MASTER_QUERY_ROLE to gen_query_user;
+  grant BIL_WORK_QUERY_ROLE to gen_query_user;
+  grant CGS_WORK_QUERY_ROLE to gen_query_user;
+  grant CYP_WORK_QUERY_ROLE to gen_query_user;
+  grant DLV_WORK_QUERY_ROLE to gen_query_user;
+  grant DM_ALFRESCO_WORK_QUERY_ROLE to gen_query_user;
+  grant DM_WORK_QUERY_ROLE to gen_query_user;
+  grant EAI_WORK_QUERY_ROLE to gen_query_user;
+  grant EPR_WORK_QUERY_ROLE to gen_query_user;
+  grant HM_WORK_QUERY_ROLE to gen_query_user;
+  grant IM_WORK_QUERY_ROLE to gen_query_user;
+  grant NTF_WORK_QUERY_ROLE to gen_query_user;
+  grant PARAM_WORK_QUERY_ROLE to gen_query_user;
+  grant PC_WORK_QUERY_ROLE to gen_query_user;
+  grant PDLM_WORK_QUERY_ROLE to gen_query_user;
+  grant PD_WORK_MASTER_QUERY_ROLE to gen_query_user;
+  grant PD_WORK_QUERY_ROLE to gen_query_user;
+  grant REFERENCE_QUERY_USER to gen_query_user;
+  grant REFREAD_QUERY_ROLE to gen_query_user;
+  grant REFWORK_MASTER_QUERY_ROLE to gen_query_user;
+  grant REFWORK_QUERY_ROLE to gen_query_user;
+  grant REFCORE_WORK_QUERY_ROLE to gen_query_user;
+  grant REF_APPL_MASTER_QUERY_ROLE to gen_query_user;
+  grant REF_APPL_QUERY_ROLE to gen_query_user;
+  grant SO_WORK_QUERY_ROLE to gen_query_user;
+  grant SP_WORK_QUERY_ROLE to gen_query_user;
+  grant UAMS_WORK_QUERY_ROLE to gen_query_user;
+grant select on op_work.opconfig to gen_query_user;
+
+
+  grant BLAPPO_SEL to GEN_QUERY_USER;
+  grant BLCUSTSA_SEL to GEN_QUERY_USER;
+  grant BLCUSTSB_SEL to GEN_QUERY_USER;
+  grant BLCUSTS_SEL to GEN_QUERY_USER;
+  grant BLREFWORK_SEL to GEN_QUERY_USER;
+  grant BLUSG1O_SEL to GEN_QUERY_USER;
+  grant BLUSG1SA_SEL to GEN_QUERY_USER;
+  grant BLUSG1SB_SEL to GEN_QUERY_USER;
+  grant BLUSG2O_SEL to GEN_QUERY_USER;
+  grant BLUSG2SA_SEL to GEN_QUERY_USER;
+  grant BLUSG2SB_SEL to GEN_QUERY_USER;
+
+grant REFREAD_SEL to gen_query_user;
+grant SLFDBO2_SEL to gen_query_user;
+grant SLFREFO2_SEL to gen_query_user;
+grant XBLSEC2_SEL to gen_query_user;
+
+  ALTER USER GEN_QUERY_USER DEFAULT ROLE ALL;
+grant advisor to gen_query_user;
+grant execute on sys.dbms_workload_repository to gen_query_user;
+
+!add_to_alt_user_password.sh GEN_QUERY_USER
+
+
+EOF

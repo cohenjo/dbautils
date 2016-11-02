@@ -1,0 +1,9 @@
+#!/bin/ksh
+gencreate_cnv_sys_proc
+
+for i  in CNV_USER_DVT:CNVDVTUSER CNV_USER_CORE:CORECNVALL CNV_USER_SFU:SFUCONVUSER CNV_USER_FINANCE:FINCNVALL CNV_USER_CR275:CR275FORCONV CNV_USER_OTHERS:OTHERSCONTROL CNV_USER_DVIC:YOSSIPASSWORD
+do
+        username=`echo $i | awk  -F ":" '{print $1}'`
+        password=`echo $i | awk  -F ":" '{print $2}'`
+        gencreate_cnv_users ${username} ${password}
+done

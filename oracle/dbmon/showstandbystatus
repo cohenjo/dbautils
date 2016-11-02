@@ -1,0 +1,254 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show parallel queries
+#
+#  USAGE: "showstandbystatus"
+#
+#  By Adi Zohar - Apr 2011
+#*****************************************************************************
+typeset -u TOP_SQL=`echo $1|cut -d. -f1`
+
+if [ -z "$TOP_SQL" ]
+then
+        export TOP_SQL=20
+fi
+
+sqlplus -s "/ as sysdba" <<EOS
+clear buffer
+set pages 0 verify off line 180 feed off 
+column line format a70
+alter session set "_hash_join_enabled"=true;
+alter session set NLS_DATE_FORMAT='DD/MM/YYYY HH24:MI';
+
+prompt ***********************************************************************************************************
+select '* ' || host_name || ' : ' || instance_name  || ' at ' || to_char (sysdate,'DD/MM/YYYY HH24:MI') as line from v\$instance;
+prompt ***********************************************************************************************************
+
+select /* showperformance */ 'DB Memory:                   ' || trunc(sum(value)/1024/1024) ||' MB' from v\$sga;
+select /* showperformance */ 'All Connections:             ' || count(*) from v\$session where username!='SYS' and username is not null;
+select /* showperformance */ 'Active Connections:          ' || count(*) from v\$session where status='ACTIVE';
+select /* showperformance */ 'Total Parallel Processes:    ' || count(*) from v\$px_session;
+prompt 
+prompt **********************************
+prompt *        Standby Status          *
+prompt **********************************
+select /* showperformance */ 'Status:  ' || STATE from v\$logstdby_state;
+select /* showperformance */ 'Behind:  ' || to_char((sysdate-nvl(applied_time,mining_time))*24*60,'99,999.99')||' Minutes' from V\$LOGSTDBY_PROGRESS;
+select /* showperformance */ 'Restart: ' || to_char(restart_time,'DD/MM/YYYY HH24:MI:SS') from V\$LOGSTDBY_PROGRESS;
+select /* showperformance */ 'Archive: ' || to_char(min(FIRST_TIME),'DD/MM/YYYY HH24:MI:SS')|| ' (Total of '||count(*)||' archives)' FROM DBA_LOGSTDBY_LOG;
+
+select /* showperformance */ 'Mining:  ' || to_char(mining_time,'DD/MM/YYYY HH24:MI:SS') || (select ' ('||count(*)||' archives)' from DBA_LOGSTDBY_LOG where first_time>mining_time)
+from V\$LOGSTDBY_PROGRESS;
+
+select /* showperformance */ 'Applied: ' || to_char(applied_time,'DD/MM/YYYY HH24:MI:SS') || (select ' ('||count(*)||' archives)' from DBA_LOGSTDBY_LOG where first_time>applied_time)
+from V\$LOGSTDBY_PROGRESS;
+
+select /* showperformance */ 'Latest:  ' || to_char(latest_time,'DD/MM/YYYY HH24:MI:SS') from V\$LOGSTDBY_PROGRESS;
+select /* showperformance */ 'Paged:   ' || trunc(to_number(value)/1024/1024)||' mb' from v\$logstdby_stats where name = 'bytes paged out';
+
+prompt 
+prompt **********************************
+prompt *        TDR connections         *
+prompt **********************************
+select /* showperformance */ 'SENSIS_QUSER_DW: ' || count(*) from v\$session where username='SENSIS_QUSER_DW';
+select /* showperformance */ 'CDC_SUBSCRIBER : ' || count(*) from v\$session where username='CDC_SUBSCRIBER';
+
+col program for a40
+col connections for 9999
+set pages 1000  
+select /* showperformance */ program, count(*) connections from v\$session where username in ('SENSIS_QUSER_DW','CDC_SUBSCRIBER') group by program order by 2 desc;
+
+set pages 1000 lines 190 feed off
+col Machine for a13 trunc
+col Os_User for a7 trunc
+col Mstr for 99999
+col sid for 99999
+col para for 999
+col usr for a10 trunc
+col module for a8 trunc
+col mins for 9999 
+col sql_text for a60 trunc
+col sql_text1 for a74 trunc head "SQL"
+col sql_text2 for a90 trunc head "SQL"
+col sql_text3 for a100 trunc head "SQL"
+col undo_used for a10
+col Os_Process for a10 trunc
+col owner for a20 trunc
+col table_name for a30 trunc
+col program for a20 trunc
+col connectons for 99999
+col start_time for a20
+col SUSPEND_TIME for a20
+
+prompt  
+prompt **********************************
+prompt *       PARALLEL Processes       *
+prompt **********************************
+
+set heading on
+select /* showperformance */ a.qcsid Mstr,b.status,round((sysdate-b.logon_time)*24*60)+1 Mins,b.sql_id,count(*) para ,b.module,b.process Os_Process,replace(b.machine,'DITAD\','') machine ,osuser Os_User, b.username usr, SQL_TEXT 
+  from  v\$px_session a, v\$session  b, v\$sqlarea t
+ where a.qcsid <> a.sid
+   and a.qcsid = b.sid
+   and t.sql_id(+)=b.sql_id and b.sql_id is not null
+group by a.qcsid,b.process ,b.machine,b.osuser,b.username,b.sql_id,b.module,sql_text,logon_time,b.status
+order by sql_id,1,2;
+
+prompt  
+prompt **********************************
+prompt *       SERIAL Processes         *
+prompt **********************************
+select /* showperformance */ sid,b.sql_id,round((sysdate-b.logon_time)*24*60)+1 mins, b.module, b.process Os_Process,replace(b.machine,'DITAD\','') machine,
+b.osuser Os_User, b.username usr,SQL_TEXT sql_text1
+ from v\$session  b, v\$sqlarea t
+ where sid not in (select sid from v\$px_session)
+ and t.sql_id(+)=b.sql_id
+ and b.username is not null
+ and status='ACTIVE' and username not in ('PUBLIC','DBSNMP','SYS')
+order by sql_text1;
+
+prompt  
+prompt **********************************
+prompt *         Locked objects         *
+prompt **********************************
+prompt  
+col name for a35 head "LOCKED OBJECT" 
+col status  for a3 head STA trunc
+col inst_id for 9 head "INS"
+col process for a6 head "OS PROC" trunc
+col session_id for 99999 head SID 
+col serial# for 999999 
+col os_user_name for a10 head "OS USER"  trunc
+col oracle_username for a13 head "LOCKING USER" trunc
+col username for a11 trunc
+col program for a40 trunc
+col load_time for a14 trunc
+col lock_held for a10 trunc
+col shadow format a6
+col object_name for a26 trunc
+select /*+ ordered use_nl(a,b) */ /* showperformance */
+    distinct inst_id,session_id,serial#,a.status,oracle_username,os_user_name,process, shadow, nvl(b.name,'-') object_name, lock_held, load_time, program
+from
+    (
+    SELECT /*+ ordered use_hash(x,l,s,b,p) */ 
+        x.inst_id,
+        s.indx session_id,
+        s.ksuseser serial#,
+        DECODE (BITAND (s.ksuseidl, 11),1, 'ACTIVE',0, DECODE (BITAND (s.ksuseflg, 4096), 0, 'INACTIVE', 'CACHED'),2, 'SNIPED',3, 'SNIPED','KILLED') STATUS,
+        s.ksuudlna oracle_username,
+        s.ksuseunm os_user_name,
+        p.ksuprpid shadow,
+        decode(l.ksqlkmod,
+   0, 'None',           /* Mon Lock equivalent */
+   1, 'Null',           /* N */
+   2, 'Row-S (SS)',     /* L */
+   3, 'Row-X (SX)',     /* R */
+   4, 'Share',          /* S */
+   5, 'S/Row-X (SSX)',  /* C */
+   6, 'Exclusive',      /* X */
+   to_char(l.ksqlkmod)) lock_held,  
+        x.ktcxbstm load_time, 
+        s.ksusepid process,
+        s.ksusepnm program,
+        l.ktadmtab as obj#
+    FROM 
+        x\$ktcxb x, 
+        x\$ksuse s, 
+        x\$ktadm l,
+        x\$ksupr p
+    WHERE 
+        x.ktcxbses = s.addr AND s.ksuudlna not in ('SYSTEM','OP_USER') AND
+        s.ksspaown= p.addr (+) AND
+        x.ktcxbxba = l.kssobown (+) and 
+        (
+            l.ktadmtab is not null
+            or
+            l.ktadmtab is null and BITAND (x.ksspaflg, 1) != 0 AND BITAND (x.ktcxbflg, 2) != 0
+            )
+    ) a,
+    sys.obj$ b
+    where a.obj#=b.obj# (+) 
+        order by 11,1,2;
+
+prompt 
+prompt **********************************
+prompt *   TOP $TOP_SQL SQLS Based on IO      *
+prompt **********************************
+set heading on feed off
+select /* showperformance */ * from (
+SELECT gv.sql_id,COUNT(*),ROUND(COUNT(*)*100/SUM(COUNT(*)) OVER(), 2) PCTLOAD, a.rows_processed ,SQL_TEXT sql_text3
+FROM gv\$active_session_history gv, v\$sqlarea a
+WHERE sample_time between SYSDATE - 1/288 and sysdate
+AND session_type = 'FOREGROUND'
+and SESSION_STATE!='ON CPU'
+and gv.sql_id=a.sql_id(+) and sql_text is not null
+and sql_text not like '%/* showperformance */%'
+GROUP BY gv.sql_id, SQL_TEXT ,rows_processed
+ORDER BY COUNT(*) DESC)
+where rownum <= $TOP_SQL;
+
+prompt 
+prompt **********************************
+prompt *   TOP $TOP_SQL SQLS Based on CPU     *
+prompt **********************************
+select /* showperformance */ * from (
+SELECT gv.sql_id,COUNT(*),ROUND(COUNT(*)*100/SUM(COUNT(*)) OVER(), 2) PCTLOAD, a.rows_processed , SQL_TEXT sql_text3
+FROM gv\$active_session_history gv, v\$sqlarea a
+WHERE sample_time between SYSDATE - 1/288 and sysdate
+AND session_type = 'FOREGROUND'
+and SESSION_STATE='ON CPU'
+and gv.sql_id=a.sql_id(+) and sql_text is not null
+and sql_text not like '%/* showperformance */%'
+GROUP BY gv.sql_id, SQL_TEXT ,a.rows_processed
+ORDER BY COUNT(*) DESC)
+where rownum <= $TOP_SQL ;
+
+prompt ***************************************************
+prompt *      Sessions using TEMP segments > 50mb        *
+prompt ***************************************************
+set feed off echo off verify off pagesize 199 linesize 199 
+column username format a20 trunc
+column process format 999999
+column osuser format a15 trunc
+column machine format a20 trunc
+column program format a30 trunc
+column tablespace format a20
+column inst_id for 999 
+column mb format 999,999 head "MB"
+select /*+ use_hash(s,t) */ 
+    t.inst_id,
+    s.indx as sid, 
+    s.ksuudnam as username,
+    s.ksusepid as process, 
+    s.ksuseunm as osuser, 
+    s.ksusemnm as machine, 
+    s.ksusepnm as program, 
+    t.ktssotsn as tablespace,
+    (t.ktssoblks*8192/1024/1024) as MB 
+from sys.x\$ktsso t, x\$ksuse s
+where t.ktssoses=s.addr and t.ktssosno = s.ksuseser and t.ktssoblks*8192/1024/1024 > 50
+order by 9 desc;
+
+prompt 
+prompt ***************************************************
+prompt *        Top 10 biggest CDC tables                *
+prompt ***************************************************
+column mb format 999,999,999
+column blocks format 99,999
+column segment_name format a30 heading "Segment Name"
+column segment_type format a6 heading "Type"
+column tablespace_name format a14 heading "Tablespace"
+column owner format a25
+select * from 
+(
+select s.owner, segment_name, s.segment_type "Type", s.bytes/1024/1024 MB
+from
+    dba_segments s
+where
+    s.tablespace_name = upper('CDC_DATA') 
+order by s.bytes desc, s.segment_name)
+where rownum<10;
+
+EOS
+

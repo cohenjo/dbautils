@@ -1,0 +1,47 @@
+#!/bin/ksh
+############################################3
+# show8locks
+# 
+# by Adi Zohar
+# 
+# 01/02/2003
+############################################3
+
+sqlplus -s "/ as sysdba" <<EOF
+col name for a35 head "locked object" jus c
+col status head sess|stat jus c
+col inst_id for 9
+col process for a12 head "os |proces" jus c
+col session_id for 9999 head sid jus c
+col serial# for 999999 head serial# jus c
+col os_user_name for a12 head "os user" jus c
+col oracle_username for a26 head "locking user" jus c
+col username for a15 jus c
+
+set pages 200
+set lines 140
+
+prompt Current Locks
+prompt --------------
+
+select  
+a.session_id,b.serial#,b.status,a.oracle_username,a.os_user_name,a.process
+,c.name
+from sys.obj\$ c,v\$session b,v\$locked_object a
+where a.session_id=b.sid and
+      c.obj#=a.object_id;
+
+col username for a30
+prompt Current Transactions Locks
+prompt ------------------------------
+
+SELECT a.inst_id, a.sid, a.username, b.xidusn, b.used_urec, b.used_ublk
+  FROM gv\$session a, gv\$transaction b
+  WHERE a.saddr = b.ses_addr and a.inst_id=b.inst_id;
+
+set head off
+select 'There are also '||count(*)||' transaction locks' 
+from v\$transaction_enqueue
+/
+
+EOF

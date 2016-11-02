@@ -1,0 +1,24 @@
+#!/bin/ksh 
+#***********************************************************************
+#
+# Script Name    : cre_show_lock_pkg.sh
+#
+# create the show_lock_pkg at SYS for show8locks
+#
+# By Adi Zohar - Feb 2003
+#***********************************************************************
+. ~/.profile
+
+ORATAB=/etc/oratab
+
+cd $ORACLE_MON
+#***********************************************************************
+for NEW_SID in `grep -v "^#" ${ORATAB} | awk 'BEGIN {FS=":"} {if ($3=="Y")  { print $1 }} '|grep -v "*"`
+do
+    export ORACLE_SID=${NEW_SID}
+	sqlplus -s "/ as sysdba" <<EOF
+	set echo off feed off pages 0 lines 199
+	select distinct name,status,to_char(time,'DD/MM/YYYY HH24:MI') time 
+	from v\$backup , v\$database;
+EOF
+done

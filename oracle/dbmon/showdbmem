@@ -1,0 +1,24 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showdbtime
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 150 feed off
+alter session set nls_date_format='DD-MON-YYYY HH24:MI';
+set pages 0
+
+SELECT instance_name || ':   Sga '|| trunc(sga)||'mb,   Size '||trunc(mb)||'gb,    Proc: '||cur_process||' of '||max_processes
+FROM  v\$instance,
+      (select sum(bytes)/1024/1024/1024 MB from v\$datafile),
+      (select sum(value)/1024/1024 sga from v\$sga),
+      (select value as max_processes from v\$parameter where name='processes'),
+      (select count(*) as cur_process from V\$process)
+WHERE rownum = 1;
+
+EOF

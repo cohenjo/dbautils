@@ -1,0 +1,57 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to grant unlimited quota to all user      
+#
+#  USAGE: gentsps_quota Tablespace_name 
+#
+#  By Adi Zohar - Nov 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "Tablsapce must be provided: \c"; read NAME
+fi
+
+TEMP_FILE=/tmp/gentsps_quota_$$.sql
+TEMP_FILE_LOG=/tmp/gentsps_quota_run_$$.sql
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+select 'alter user '||username||' quota unlimited on $NAME ;'
+	from dba_users;
+spool off
+EOF
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "ALTER" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes quota assigned "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+echo "Would you like to execute ? (Y/N) \c"; read Local
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	alter session set sort_area_size=9999999;
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors quota assigned with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

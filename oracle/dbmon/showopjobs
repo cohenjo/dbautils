@@ -1,0 +1,115 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show op jobs   
+#
+#  By Adi Zohar - Jan 2011
+#*****************************************************************************
+
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                              | Help"
+ echo " -a     [DAY=0] [RUN_FROM=I,O,M] | ALL JOBS for Cycle"
+ echo " -r     [DAY=0] [RUN_FROM=I,O,M] | Running JOBS for Cycle"
+ echo " -j     [JOB_NAME] [DAYS=60]     | PER JOB"
+ echo "}"
+ echo "Examples:"
+ echo " `basename $0` -a 0 I               | Show all jobs for today with Immediate run"
+
+ echo ""
+}
+
+AllJobs()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set pages 1000 trimsp on lines 199 feed off
+col job_name for a16 trunc
+col job_rec for a12 trunc
+col job_description for a30 trunc
+col stat for a5 trunc
+col run_from for a2 trunc head "R"
+col empname for a21 trunc
+col start_time for a21 trunc
+col end_time for a21 trunc
+col duration for a10 trunc
+
+select  
+    trim(d.job_name) job_name, 
+    trim(d.job_rec) job_rec, 
+    substr(trim(o.opprog_description),1,35) job_description, 
+    trim(run_status) stat, 
+    run_from,  
+    (case when oppar_user_name is null then '-' else (select EMP_FIRST_NAME||' '||EMPLOYEE_SURNAME||' ('||oppar_user_name||')' from refread.employee where to_char(employee_id)=oppar_user_name) end) EmpName, 
+    to_char(run_starttime,'DD/MM/YYYY HH24:MI:SS') START_TIME, 
+    to_char(run_endtime,'DD/MM/YYYY HH24:MI:SS') END_TIME, 
+    nvl(to_char(trunc(sysdate)+(run_endtime-run_starttime),'hh24:mi:ss'),'Running') duration 
+from  
+    op_work.OPJOBSTAT d, 
+    op_work.opprog o, 
+    op_work.oppar p  
+where  
+    $WHERE_CLAUSE
+    trim(d.job_name)=o.OPPROG_JOB_NAME (+) and 
+    trim(d.job_name)=p.oppar_job_name (+) and 
+    trim(d.job_rec)=p.oppar_job_rec (+) 
+    order by run_starttime;
+EOF
+}
+
+#############################################################
+# Main
+#############################################################
+if [ $# -eq 0 ]
+then Usage
+     exit 0  
+fi
+
+
+case $1 in
+    -h   ) Usage ;;
+    -a   ) 
+                DAY=$2
+                if [ -z "$DAY" ]
+                then
+                        DAY=0
+                fi
+                RUN_FROM=$3
+                if [ -z "$RUN_FROM" ]
+                then
+                        RUN_FROM="%"
+                fi
+                export WHERE_CLAUSE="logical_date = (select trunc(logical_Date)-$DAY from authwork.op_logical_date where LOGICAL_DATE_TYPE ='B') and RUN_FROM like '$RUN_FROM' and "
+                AllJobs 
+                ;;
+    -r   ) 
+                DAY=$2
+                if [ -z "$DAY" ]
+                then
+                        DAY=0
+                fi
+                RUN_FROM=$3
+                if [ -z "$RUN_FROM" ]
+                then
+                        RUN_FROM="%"
+                fi
+                export WHERE_CLAUSE="run_endtime is null and logical_date = (select trunc(logical_Date)-$DAY from authwork.op_logical_date where LOGICAL_DATE_TYPE ='B') and RUN_FROM like '$RUN_FROM' and "
+                AllJobs 
+                ;;
+    -j   ) 
+                JOB_NAME=$2
+                DAY=$3
+                if [ -z "$DAY" ]
+                then
+                        DAY=60
+                fi
+                export WHERE_CLAUSE="logical_date > sysdate - $DAY and d.job_name = '$JOB_NAME' and"
+                AllJobs ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR
+           ;;
+  esac
+
+

@@ -1,0 +1,86 @@
+#!/bin/sh
+sqlplus -s / <<EOF
+set echo off time off trimsp on lines 199
+
+CREATE TABLE MONITOR_WORK.REF_SLA_MONITOR_TRANS
+(
+  SLA_TYPE              VARCHAR2(2 BYTE),
+  SLA_TRANSACTION_DESC  VARCHAR2(120 BYTE),
+  MVC_TRANSACTION_DESC  VARCHAR2(120 BYTE)
+)
+TABLESPACE AUDIT_DATA;
+
+CREATE UNIQUE INDEX MONITOR_WORK.REF_SLA_MONITOR_TRANS_1IX ON MONITOR_WORK.REF_SLA_MONITOR_TRANS (MVC_TRANSACTION_DESC, SLA_TYPE, SLA_TRANSACTION_DESC) TABLESPACE AUDIT_DATA;
+CREATE UNIQUE INDEX MONITOR_WORK.REF_SLA_MONITOR_TRANS_PK ON MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) TABLESPACE AUDIT_DATA;
+
+ALTER TABLE MONITOR_WORK.REF_SLA_MONITOR_TRANS ADD CONSTRAINT REF_SLA_MONITOR_TRANS_PK PRIMARY KEY (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) USING INDEX ;
+
+GRANT DELETE, INSERT, SELECT, UPDATE ON MONITOR_WORK.REF_SLA_MONITOR_TRANS TO MONITOR_WORK_UPDATOR_ROLE;
+GRANT SELECT ON MONITOR_WORK.REF_SLA_MONITOR_TRANS TO DBI_TEMP_USER;
+GRANT SELECT ON MONITOR_WORK.REF_SLA_MONITOR_TRANS TO HPDIAG_USER;
+GRANT SELECT ON MONITOR_WORK.REF_SLA_MONITOR_TRANS TO MONITOR_WORK_QUERY_ROLE;
+
+-----------------------------------------------------------------------------------------
+
+CREATE TABLE MONITOR_WORK.REF_SLA_REQUIREMENTS
+(
+  SLA_TYPE            VARCHAR2(2 BYTE),
+  SLA_MAX_SECONDS     NUMBER,
+  SLA_TARGET_PERCENT  NUMBER,
+  ESL_TARGET_PERCENT  NUMBER
+)
+TABLESPACE AUDIT_DATA;
+
+CREATE UNIQUE INDEX MONITOR_WORK.REF_SLA_REQUIREMENTS_PK ON MONITOR_WORK.REF_SLA_REQUIREMENTS (SLA_TYPE) TABLESPACE AUDIT_DATA;
+ALTER TABLE MONITOR_WORK.REF_SLA_REQUIREMENTS ADD CONSTRAINT REF_SLA_REQUIREMENTS_PK  PRIMARY KEY  (SLA_TYPE)  USING INDEX ;
+
+GRANT SELECT ON MONITOR_WORK.REF_SLA_REQUIREMENTS TO MONITOR_WORK_QUERY_ROLE;
+GRANT DELETE, INSERT, SELECT, UPDATE ON MONITOR_WORK.REF_SLA_REQUIREMENTS TO MONITOR_WORK_UPDATOR_ROLE;
+GRANT SELECT ON MONITOR_WORK.REF_SLA_REQUIREMENTS TO DBI_TEMP_USER;
+GRANT SELECT ON MONITOR_WORK.REF_SLA_REQUIREMENTS TO HPDIAG_USER;
+
+-----------------------------------------------------------------------------------------
+SET DEFINE OFF;
+DELETE MONITOR_WORK.REF_SLA_REQUIREMENTS ;
+Insert into MONITOR_WORK.REF_SLA_REQUIREMENTS (SLA_TYPE, SLA_MAX_SECONDS, SLA_TARGET_PERCENT, ESL_TARGET_PERCENT) Values ('A', 1, 90, 95);
+Insert into MONITOR_WORK.REF_SLA_REQUIREMENTS (SLA_TYPE, SLA_MAX_SECONDS, SLA_TARGET_PERCENT, ESL_TARGET_PERCENT) Values ('B', 5, 90, 95);
+Insert into MONITOR_WORK.REF_SLA_REQUIREMENTS (SLA_TYPE, SLA_MAX_SECONDS, SLA_TARGET_PERCENT, ESL_TARGET_PERCENT) Values ('C', 10, 90, 95);
+Insert into MONITOR_WORK.REF_SLA_REQUIREMENTS (SLA_TYPE, SLA_MAX_SECONDS, SLA_TARGET_PERCENT, ESL_TARGET_PERCENT) Values ('D', 20, 90, 95);
+Insert into MONITOR_WORK.REF_SLA_REQUIREMENTS (SLA_TYPE, SLA_MAX_SECONDS, SLA_TARGET_PERCENT, ESL_TARGET_PERCENT) Values ('E', 30, 90, 95);
+COMMIT;
+
+SET DEFINE OFF;
+DELETE MONITOR_WORK.REF_SLA_MONITOR_TRANS ;
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('A', 'Document Search (by Document ID)', 'Entering All Documents Summary by Criteria');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('A', 'Update customer record via report', 'Submitting Transaction Handle Discrepancy');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Change views in order management domain', 'Billing Term');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Change views in order management domain', 'Entering Agreement List by PK');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Change views in order management domain', 'Entering Bundle Analyzer Search');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Change views in order management domain', 'Entering Caption Viewer');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Change views in order management domain', 'Entering Default Artefact List');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Change views in order management domain', 'Entering Default Fulfilment Status');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Change views in order management domain', 'Entering Default Listing List');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Change views in order management domain', 'Entering Default Ontology List');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Change views in order management domain', 'Entering Note/Call Log List by PK');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Change views in order management domain', 'Entering Order List by PK');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Change views in order management domain', 'Entering Purchased Product List by PK');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Disconnect listing', 'Submitting Transaction Disconnect Listing');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Document Search (multiple search criteria)', 'Entering Advertiser Document Summary by Criteria');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Managerial dashboard records display return', 'Entering Default Managerial Dashboard');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Managerial dashboard records display return', 'Entering Managerial Dashboard by Criteria');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'New/Update analysis transaction', 'Submitting Transaction New Analysis');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'New/Update analysis transaction', 'Submitting Transaction Update Analysis');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('B', 'Update product attributes transaction (from order management to business content management)', 'Update Product');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('C', 'Content search', 'Entering Content Summary by Criteria');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('C', 'Copysheet creation', 'Print Copy Sheet Form');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('C', 'Document search (Search by Document Type)', 'Entering Agreement Summary by Criteria');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('C', 'Order/proposal template creation', 'Print Order');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('C', 'Order/proposal template creation', 'Print Proposal');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('C', 'Sales prep template document production', 'Submitting Transaction New Preparation');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('C', 'Sales prep template document production', 'Submitting Transaction Update Preparation');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('D', 'Create new additional listing including all validation', 'Submitting Transaction New Additional Listing');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('E', 'Create new main listing including all validation for Business', 'Submitting Transaction New Main Listing');
+Insert into MONITOR_WORK.REF_SLA_MONITOR_TRANS (SLA_TYPE, SLA_TRANSACTION_DESC, MVC_TRANSACTION_DESC) Values  ('E', 'Create new main listing including all validation for Residential', 'Submitting Transaction New Main Listing');
+COMMIT;
+EOF
+

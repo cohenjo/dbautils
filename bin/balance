@@ -1,0 +1,60 @@
+#!/bin/bash
+#
+# balance     Startup script for the Vertica balance load balancer
+#
+# chkconfig: - 64 36
+#
+# #
+ 
+# Source function library
+. /etc/rc.d/init.d/functions
+
+prog="balance"
+balance="/usr/sbin/balance"
+RETVAL=0
+ 
+start() {
+    echo -n $"Starting $prog: "
+    daemon $balance "-t 5 5433 mydvm2191.hpswlabs.adapps.hp.com:5433 mydvm2192.hpswlabs.adapps.hp.com:5433 mydvm2194.hpswlabs.adapps.hp.com:5433 2>&1 >> /var/log/balance.log"
+    RETVAL=$?
+    echo
+    [ $RETVAL -eq 0 ] && touch /var/lock/subsys/$prog
+    return $RETVAL
+}
+ 
+stop() {
+    echo -n $"Stopping $prog: "
+    killproc $prog
+    RETVAL=$?
+    echo
+    [ $RETVAL -eq 0 ] && rm -f /var/lock/subsys/$prog
+    return $RETVAL
+}
+ 
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    condrestart)
+        if [ -f /var/lock/subsys/$prog ]; then
+            stop
+            start
+        fi
+        ;;
+    status)
+        status $balance
+        RETVAL=$?
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|restart|condrestart|status}"
+        RETVAL=1
+esac
+ 
+exit $RETVAL

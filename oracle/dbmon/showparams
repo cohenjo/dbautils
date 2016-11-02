@@ -1,0 +1,61 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show instance parameters
+#
+#  USAGE: showparams paramname
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+echo ""
+echo "**********************************************************"
+echo "*                     DESC                               *"
+echo "**********************************************************"
+sqlplus -s '/ as sysdba' <<EOF
+set pages 300 lines 199 trimspo on feed off
+col name for a40
+col description for a120 trunc
+select ksppinm name, ksppdesc description
+from x\$ksppi   
+where 
+	  ksppinm like lower('%${1}%') 
+order by 1,2
+/
+EOF
+
+echo ""
+echo "**********************************************************"
+echo "*                     SPFILE                             *"
+echo "**********************************************************"
+sqlplus -s '/ as sysdba' <<EOF
+set pages 300 lines 299 trimspo on feed off
+col sid for a8
+col name for a40
+col value for a180
+select name,sid,value from v\$spparameter
+where 
+	  name like lower('%${1}%') 
+order by 1,2
+/
+EOF
+echo ""
+echo "**********************************************************"
+echo "*                    MEMORY                              *"
+echo "**********************************************************"
+
+sqlplus -s '/ as sysdba' <<EOS
+set pages 300 lines 299 trimspo on feed off
+col sid for a8                     
+col name for a40
+col value for a180
+col SES_MOD for a3 trunc
+col SYS_MOD for a3 trunc
+select name,isses_modifiable SES_MOD, issys_modifiable SYS_MOD, i.instance_name sid, value
+from gv\$parameter r, gv\$instance i
+where 
+r.inst_id=i.inst_id and
+	  name like lower('%${1}%') 
+order by 1,4
+/
+EOS
+

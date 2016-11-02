@@ -1,0 +1,60 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show parallel queries
+#
+#  USAGE: showparallel
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOS
+set pages 100 lines 290 feedback off trims on
+break on STS skip 1
+alter session set "_hash_join_enabled"=true;
+col Mstr for 99999
+col SQL_TEXT for a55 trunc
+col STS for a3 trunc
+compute sum of para on STS
+col sql_id for a13
+col para for 999
+col reqpar for 999
+col Machine for a12 trunc
+col module for a14 trunc
+col usr for a19 trunc head USER_NAME
+col secs for a8 head "ELAPSED"
+col temp_mb for 999999
+col undo_mb for 999999
+col shadow for a7
+col Os_User for a10 trunc
+col log_time for a5 head LOGIN
+set heading on
+select /* ordered use_hash(a,b,t,p) */
+        a.qcsid Mstr,
+        count(*)-1 para ,
+        sum(req_degree) / nvl(avg(degree),1) reqpar,
+        b.status as STS,
+        b.sql_id,
+        b.module,
+        replace(b.machine,'DITAD\','') machine ,
+        osuser Os_User,
+        b.username usr,
+        p.spid shadow,
+        max(regexp_substr(NUMTODSINTERVAL(b.last_call_et, 'SECOND'),'\d{0}\d{1}:\d{2}:\d{2}')) secs,
+        sum(temp_mb) as temp_mb ,
+        sum(undo_mb) as undo_mb ,
+        to_char(logon_time,'HH24:MI') log_time,
+        SQL_TEXT
+  from  v\$px_session a, v\$session  b, v\$sqlarea t, v\$process p,
+        (select ktssoses as saddr, ktssosno as serial#, sum((ktssoblks/128)) TEMP_MB from sys.x\$ktsso group by  ktssoses, ktssosno) tmp,
+        (select ses_addr as saddr,sum(used_ublk/128) UNDO_MB from v\$transaction group by ses_addr) undo
+ where
+       a.qcsid = b.sid
+   and b.paddr=p.addr (+)
+   and t.sql_id(+)=b.sql_id
+   and   a.saddr=tmp.saddr (+) and a.serial#=tmp.serial# (+)
+   and   a.saddr=undo.saddr (+)
+group by a.qcsid,b.process ,b.machine,b.osuser,b.username,b.sql_id,b.module,sql_text,logon_time,b.status, p.spid
+order by b.status, secs desc,sql_id;
+
+
+EOS

@@ -1,0 +1,151 @@
+#!/bin/ksh 
+
+#######################################################################
+# Sam Yeoman
+# Script: showdbcache
+# Description: to show database buffer hit ratio, historical stats, advice
+#######################################################################
+
+############################################
+# Show usage
+############################################
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                | Help"
+ echo " -a                | show advice"
+ echo " -s                | show hourly stats"
+ echo "       }\n"
+ printf "\n"
+}
+
+############################################
+# Normal output 
+############################################
+normal()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+
+SELECT NAME, PHYSICAL_READS, DB_BLOCK_GETS, CONSISTENT_GETS,
+1 - (PHYSICAL_READS/(DB_BLOCK_GETS + CONSISTENT_GETS)) "HitRatio"
+FROM V\$BUFFER_POOL_STATISTICS
+/
+
+select * from (
+SELECT TO_CHAR (end_interval_time, 'mm-dd-yyyy') "DATE",
+       AVG( ( ( (new.consistent_gets - old.consistent_gets)
+               + (new.db_block_gets - old.db_block_gets))
+             - (new.physical_reads - old.physical_reads))
+           / ( (new.consistent_gets - old.consistent_gets)
+              + (new.db_block_gets - old.db_block_gets)))
+          bhr
+FROM dba_hist_buffer_pool_stat old,
+     dba_hist_buffer_pool_stat new,
+     dba_hist_snapshot sn
+WHERE     new.name IN ('DEFAULT', 'FAKE VIEW')
+      AND new.name = old.name
+      AND new.snap_id = sn.snap_id
+      AND old.snap_id = sn.snap_id - 1
+      AND new.consistent_gets > 0
+      AND old.consistent_gets > 0
+HAVING AVG( ( ( (new.consistent_gets - old.consistent_gets)
+               + (new.db_block_gets - old.db_block_gets))
+             - (new.physical_reads - old.physical_reads))
+           / ( (new.consistent_gets - old.consistent_gets)
+              + (new.db_block_gets - old.db_block_gets))) < 1
+GROUP BY TO_CHAR (end_interval_time, 'mm-dd-yyyy')
+ORDER BY TO_CHAR (end_interval_time, 'mm-dd-yyyy') desc
+) where rownum < 21
+/
+
+EOF
+}
+
+############################################
+# Show advice
+############################################
+show_advice()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+ 
+SELECT size_for_estimate, buffers_for_estimate, estd_physical_read_factor, estd_physical_reads
+   FROM V\$DB_CACHE_ADVICE
+   WHERE name          = 'DEFAULT'
+     AND block_size    = (SELECT value FROM V\$PARAMETER WHERE name = 'db_block_size')
+     AND advice_status = 'ON'
+/
+
+EOF
+}
+
+############################################
+# Show historical stats
+############################################
+show_historical_stats()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+ 
+set pages 999;
+column bhr format 99.999999
+
+SELECT TO_CHAR (end_interval_time, 'mm-dd-yyyy HH24') "mm-dd-yyyy hh",
+       new.name buffer_pool_name,
+       AVG( ( ( (new.consistent_gets - old.consistent_gets)
+               + (new.db_block_gets - old.db_block_gets))
+             - (new.physical_reads - old.physical_reads))
+           / ( (new.consistent_gets - old.consistent_gets)
+              + (new.db_block_gets - old.db_block_gets)))
+          bhr
+FROM dba_hist_buffer_pool_stat old,
+     dba_hist_buffer_pool_stat new,
+     dba_hist_snapshot sn
+WHERE     new.name IN ('DEFAULT', 'FAKE VIEW')
+      AND new.name = old.name
+      AND new.snap_id = sn.snap_id
+      AND old.snap_id = sn.snap_id - 1
+      AND new.consistent_gets > 0
+      AND old.consistent_gets > 0
+HAVING AVG( ( ( (new.consistent_gets - old.consistent_gets)
+               + (new.db_block_gets - old.db_block_gets))
+             - (new.physical_reads - old.physical_reads))
+           / ( (new.consistent_gets - old.consistent_gets)
+              + (new.db_block_gets - old.db_block_gets))) < 1
+GROUP BY TO_CHAR (end_interval_time, 'mm-dd-yyyy HH24'), new.name
+ORDER BY TO_CHAR (end_interval_time, 'mm-dd-yyyy HH24') ASC
+/
+EOF
+}
+
+############################################
+# Main
+############################################
+
+typeset -u USER_NAME=`echo $2|cut -d. -f1`
+if [ -z "$USER_NAME" ] 
+then
+	export USER_NAME="%"
+fi
+
+case $1 in
+    -h  ) Usage ;;
+	-s  ) show_historical_stats ;;
+	-a  ) show_advice ;;
+    ""  ) normal ;;
+     *  ) Usage ;;
+  esac

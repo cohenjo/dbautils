@@ -1,0 +1,41 @@
+#!/bin/ksh
+############################################3
+# showfragmentedtab
+# 
+############################################3
+sqlplus -s "/ as sysdba" <<EOF
+set term on
+set feedback off
+set lines 130 pagesize 60 tab off pages 3000
+column lsize format 9,999,999,999  heading "Actual KB"
+column psize format 9,999,999,999  heading "Physical KB"
+column percentage format 9,999,999,999  heading "% Growth"
+column table_name format a30 heading "Table Name"
+column owner format a30 heading "Table Owner"
+column ROW_MOVEMENT format a8 heading "Row Movement"
+
+break on report
+prompt "SHOWING FRAGMENTED TABLES ABOVE 200% 
+select owner,table_name,psize,lsize, round((((a.psize-lsize) + 0.1) * 100)/(a.lsize + 0.1)) percentage, ROW_MOVEMENT
+from
+( select owner, table_name,round((blocks*8)) psize,round((num_rows*avg_row_len/1024)) lsize, ROW_MOVEMENT
+from DBA_tables where owner not in ('SYS','SYSAUX','CNV_USER_CORE')
+) a
+where
+((((a.psize-a.lsize) + 0.1) * 100)/(a.lsize + 0.1)) > 200
+and a.psize >= 1024 
+order by percentage desc
+/
+prompt
+
+select 'TOTAL:    '||round((sum(psize)/1024/1024),2) "          Physical Size GB", round((sum(lsize)/1024/1024),2) "Actual Size GB",
+round(((sum(a.psize)-sum(a.lsize)) * 100)/(sum(a.lsize))) percentage
+from
+( select round((blocks*8)) psize,round((num_rows*avg_row_len/1024)) lsize
+from DBA_tables 
+where owner not in ('SYS','SYSAUX','CNV_USER_CORE')
+) a
+/
+
+exit
+EOF

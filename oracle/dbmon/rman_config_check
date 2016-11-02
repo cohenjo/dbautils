@@ -1,0 +1,72 @@
+#!/bin/ksh -f
+
+######################################################################
+# Script:    rman_config_check
+# Author:    Huyen Pham
+#
+#######################################################################
+
+#=====================================================================#
+# Print script usage
+#=====================================================================#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` <DB_NAME>"
+ echo "Example: change_rman_sys all/iamss3 "
+ echo "}\n"
+ printf "\n"
+}
+
+
+#=====================================================================#
+# Verify current configuration of RMAN backup
+#=====================================================================#
+CheckConfig()
+{
+
+   export ORACLE_SID=$db
+   echo "Checking Config for RMAN backup of ${ORACLE_SID}"
+   util_oracle8.pl -CHKCONF -dbname ${ORACLE_SID}
+
+}
+
+#########################################################################
+# MAIN
+# 
+#########################################################################
+
+export OK=0
+export ERROR=1
+
+export SUF=$1
+
+export ORAENV_ASK=NO
+export OMNI_BIN_DIR=/opt/omni/lbin
+cd $OMNI_BIN_DIR
+
+if [ $# -ne 1 ]
+then
+   echo "Usage:  $0 all/iamut4"
+   exit $ERROR
+fi
+
+if [ "$SUF" = "all" ]
+then
+    sidList=`awk 'BEGIN {FS=":"} {if ($3=="Y")  { print $1 }} ' /etc/oratab `
+else
+    sidList=`awk 'BEGIN {FS=":"} {if ($3=="Y")  { print $1 }} ' /etc/oratab | grep -i "$SUF" `
+    if [ "$sidList" = "" ]
+    then
+        echo "$SUF is invalid DB_NAME"
+        exit $ERROR
+    fi
+fi
+
+for db in `echo $sidList`
+do
+     echo $db
+     CheckConfig
+done
+
+

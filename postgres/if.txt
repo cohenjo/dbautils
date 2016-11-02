@@ -1,0 +1,14 @@
+DO
+$$
+DECLARE
+ is_exists int;
+BEGIN
+IF (select 1 FROM pg_database where datname='pgwatch' )>0
+THEN
+   insert into if_test values(1);
+ELSE
+   insert into if_test values(3);
+END IF;
+END;
+$$
+;

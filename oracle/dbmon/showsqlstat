@@ -1,0 +1,56 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/bin/getsql
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Kuen-Yih Chang (kchang@amdocs.com)
+#  Add             : Adi Zohar
+#  DATE            : $Date: Wed Aug 14 12:28:25 CDT 2002 $
+#
+#  This script is used to show sql from v$sqltext
+#
+#  USAGE: getsql hash_value
+#
+#*****************************************************************************
+
+hash=$1
+until [ ! -z "$hash" ]
+do
+  echo "Enter sql_id: \c"; read hash
+done
+
+days=$2
+if [ -z "$days" ]
+then
+        days=1
+fi
+
+echo "
+set pages 1000 head on feed off lines 199 trimsp on
+col snap_id for 99999
+col begin_hour for a16
+col exec for 99,999,999
+col PHY_PER_EXEC for 999,999,999
+col LOG_READ_EXEC for 999,999,999
+col ROWS_PER_EXEC for 999,999,999.99
+col cpu_per_exec for 999,999.99
+col elapsed_per_exec for 999,999.99
+col IOW_PER_EXEC for 999,999,999
+col CLW_PER_EXEC for 999,999,999
+
+select 
+    snap_id,
+    to_char(begin_interval_time,'YYYY-MM-DD HH24:MI') as begin_hour,
+    executions_delta as EXEC,
+    (elapsed_time_delta /1000000 / executions_delta) as elapsed_per_exec,
+    round(disk_reads_delta/executions_delta) PHY_PER_EXEC,
+    round(buffer_gets_delta/executions_delta) LOG_READ_EXEC,
+    (rows_processed_delta/executions_delta) as ROWS_PER_EXEC,
+    (cpu_time_delta /1000000 / executions_delta) as cpu_per_exec,
+    round(iowait_delta/executions_delta) IOW_PER_EXEC,
+    round(clwait_delta/executions_delta) CLW_PER_EXEC
+from 
+        DBA_HIST_SNAPSHOT natural join dba_hist_sqlstat
+where sql_id='$hash' and instance_number=1 and begin_interval_time>sysdate-$days and executions_delta>0
+order by 1;
+" | sqlplus -s "/ as sysdba"

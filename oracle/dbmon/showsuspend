@@ -1,0 +1,29 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+prompt #################################
+prompt #        Suspend Sessions       #
+prompt #################################
+        set pages 100 lines 250 trimsp on feed off
+        col SESSION_ID for 999999
+        col username for a10 trunc
+        col suspend_time for a19
+        col SQL_TEXT for a20 trunc
+        col ERROR_MSG for a60 trunc
+        select session_id, username,suspend_time, status, sql_text, error_msg from 
+        dba_resumable r, dba_users d where d.user_id=r.user_id and STATUS = 'SUSPENDED';
+
+prompt #################################
+prompt #          Errors only          #
+prompt #################################
+        col ERROR_MSG for a132
+        select session_id, error_msg from dba_resumable where STATUS = 'SUSPENDED';
+EOF

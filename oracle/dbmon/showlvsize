@@ -1,0 +1,19 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show volume group inforamtion
+#
+#  USAGE: showlvsize volume_group
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+if [ $# -lt 1 ]
+   then
+   echo "volume group should be specified"
+else
+/usr/sbin/vgdisplay -v $1 | egrep "LV Size|LV Name" | sed ' 
+{ 
+	N 
+	s/\n// 
+	}' |awk ' { print $3,"-", $7, $6 }'
+fi

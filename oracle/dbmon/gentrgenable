@@ -1,0 +1,63 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate enable cons for user 
+#
+#  USAGE: gentrgenable username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "User must be provided: \c"; read NAME
+fi
+
+TEMP_FILE=/tmp/gentrgenable_$$.sql
+TEMP_FILE_LOG=/tmp/gentrgenable_run_$$.sql
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+select 'ALTER TRIGGER '||OWNER||'.'||TRIGGER_NAME||' enable;'
+from dba_triggers where owner like '$NAME' and owner not in ('SYS','SYSTEM','XDB') order by 1;
+spool off
+EOF
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "TRIGGER" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes triggers to enable "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+
+#--------------------------------------------------------------------------------------------
+typeset -u PARAM=`echo $2|cut -d. -f1`
+Local=$PARAM
+if [ -z "$PARAM" ]
+then
+        echo "Would you like to execute ? (Y/N) \c"; read Local
+fi
+
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors triggers enabled with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

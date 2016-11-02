@@ -1,0 +1,93 @@
+#!/bin/sh
+############################################3
+# showtsps8i
+# 
+# by Adi Zohar
+# 
+# 01/02/2003
+############################################3
+sqlplus -s / <<EOF
+set term on
+set feedback off
+set lines 130 pagesize 60 tab off
+column MB format 9,999,999  heading "Total MB"
+column free format 9,999,999 heading "Free MB"
+column used format 9,999,999 heading "Used MB"
+column Largest format 999,999 heading "LrgstMB"
+column tablespace_name format a30 heading "Tablespace"
+column status format a4 truncated
+column max_ext format 99,999 heading "MaxExt"
+column pfree format 999 heading "%Free"
+column pct_free format A5 heading "%Grow"
+column pc format a3 heading "<25%"
+col allocation_type             for a4          trunc   head "Allc|type"
+col extent_management           for a4          trunc   head "Ext.|Mng"
+col Uni_Size			for a5          trunc   head "Uni|Size"
+
+break on report
+compute sum of MB on report
+compute sum of free on report
+compute sum of used on report
+
+select  
+	d.tablespace_name, 
+	d.status, 
+	d.extent_management, 
+	decode(d.allocation_type,'UNIFORM','UNIF','SYSTEM','AUTO','USER','',d.allocation_type) allocation_type,
+	decode(d.allocation_type,'UNIFORM', (case when initial_extent < 1048576 then round(initial_extent/1024,0)||'K' else round(initial_extent/1024/1024,0)||'M' end),'') Uni_Size,
+	NVL (a.bytes / 1024 / 1024, 0) MB,
+	NVL (f.bytes / 1024 / 1024, 0) free, 
+	(NVL (a.bytes / 1024 / 1024, 0) - NVL (f.bytes / 1024 / 1024, 0)) used,
+	NVL (l.large / 1024 / 1024, 0) largest, 
+	(case when d.MAX_EXTENTS > 99999 then 99999 else d.MAX_EXTENTS end ) max_ext,
+	round((f.bytes/a.bytes)*100,0) pfree,
+	(case when round(f.bytes/(a.bytes-f.bytes)*100,0) >= 100 then '>100%' else to_char(round(f.bytes/(a.bytes-f.bytes)*100,0))||'%' end) pct_free,
+	(case when round(f.bytes/(a.bytes-f.bytes)*100,0) >= 25 then ' ' else '*' end) "PC"
+	  FROM sys.dba_tablespaces d,
+       (SELECT   tablespace_name, SUM(bytes) bytes
+            FROM dba_data_files
+        GROUP BY tablespace_name) a,
+       (SELECT   tablespace_name, SUM(bytes) bytes
+            FROM dba_free_space
+        GROUP BY tablespace_name) f,
+       (SELECT   tablespace_name, MAX(bytes) large
+            FROM dba_free_space
+        GROUP BY tablespace_name) l
+ WHERE d.tablespace_name = a.tablespace_name(+)
+   AND d.tablespace_name = f.tablespace_name(+)
+   AND d.tablespace_name = l.tablespace_name(+)
+   AND NOT (d.extent_management LIKE 'LOCAL' AND d.contents LIKE 'TEMPORARY')
+UNION ALL
+select 
+	d.tablespace_name, 
+	d.status, 
+	d.extent_management, 
+	decode(d.allocation_type,'UNIFORM','UNIF','SYSTEM','AUTO','USER','',d.allocation_type) allocation_type,
+	decode(d.allocation_type,'UNIFORM', (case when initial_extent < 1048576 then round(initial_extent/1024,0)||'K' else round(initial_extent/1024/1024,0)||'M' end),'') Uni_Size,
+	NVL (a.bytes / 1024 / 1024, 0) MB,
+	(NVL (a.bytes / 1024 / 1024, 0) - NVL (t.bytes / 1024 / 1024, 0)) free,
+	NVL (t.bytes / 1024 / 1024, 0) used, 
+	NVL (l.large / 1024 / 1024, 0) largest, 
+	(case when d.MAX_EXTENTS > 99999 then 99999 else d.MAX_EXTENTS end ) max_ext,
+	round(nvl(((a.bytes-t.bytes)/NVL(a.bytes,0))*100,100),0) pfree,
+	(case when nvl(round(a.bytes-t.bytes/(t.bytes+0.01)*100,0),101) >= 100 then '>100%' else to_char(round(a.bytes-t.bytes/(t.bytes+0.01)*100,0))||'%' end) pct_free,
+	(case when nvl(round(a.bytes-t.bytes/(t.bytes+0.01)*100,0),100) >= 25 then ' ' else '*' end) "PC"
+	  FROM sys.dba_tablespaces d,
+       (SELECT   tablespace_name, SUM(bytes) bytes
+            FROM dba_temp_files
+        GROUP BY tablespace_name) a,
+       (SELECT   tablespace_name, SUM(bytes_used  ) bytes
+	    FROM v\$temp_extent_pool
+        GROUP BY tablespace_name) t,
+       (SELECT   tablespace_name, MAX(bytes_cached) large
+            FROM v\$temp_extent_pool
+        GROUP BY tablespace_name) l
+ WHERE d.tablespace_name = a.tablespace_name(+)
+   AND d.tablespace_name = t.tablespace_name(+)
+   AND d.tablespace_name = l.tablespace_name(+)
+   AND d.extent_management LIKE 'LOCAL'
+   AND d.contents LIKE 'TEMPORARY'
+/
+prompt
+exit
+EOF

@@ -1,0 +1,31 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showawrparams
+#
+#  By Adi Zohar - Aug 2008
+#
+# exec dbms_workload_repository.MODIFY_SNAPSHOT_SETTINGS (RETENTION=>14 * 60 * 24, INTERVAL=>1 * 60)
+#
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed off
+column db_name format a20
+column interval format 999 head "Snapshot Interval (hours)"
+column retention format 999 head "Retention Interval (days)"
+column admin_option heading admin format a8
+select d.name,
+      (extract( day from snap_interval) *24*60+
+      extract( hour from snap_interval) *60+
+      extract( minute from snap_interval ))/60 interval,
+      (extract( day from retention) *24*60+
+      extract( hour from retention) *60+
+      extract( minute from retention ))/60/24 retention
+from 
+    dba_hist_wr_control w,
+    v\$database d
+where d.dbid=w.dbid;
+EOF

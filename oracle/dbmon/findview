@@ -1,0 +1,30 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to find view 
+#
+#  USAGE: findview object_name
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "Object must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 132
+column view_name format a30
+column object_type format a20
+column owner format a26
+select owner,view_name
+from  dba_views   
+where view_name like upper('%${NAME}%')
+/
+EOF

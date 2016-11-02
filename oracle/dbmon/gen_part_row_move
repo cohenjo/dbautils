@@ -1,0 +1,50 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate disable cons for user 
+#
+#  USAGE: gen_part_row_move
+#
+#  By Adi Zohar - Oct 2008
+#*****************************************************************************
+
+TEMP_FILE=/tmp/gen_part_row_move_$$.sql
+TEMP_FILE_LOG=/tmp/gen_part_row_move_$$.log
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+select distinct 'alter table '||table_owner||'.'||table_name||' ENABLE ROW MOVEMENT;' from dba_tab_partitions
+where table_owner like '%WORK%' or table_owner in ('REF_APPL')
+order by 1;
+EOF
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "ALTER" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes changes to apply"
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+echo "Would you like to execute ? (Y/N) \c"; read Local
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors changes applied with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

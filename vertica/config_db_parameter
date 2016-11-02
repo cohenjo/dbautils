@@ -1,0 +1,12 @@
+select * from v_monitor.configuration_parameters where parameter_name='MaxClientSessions';
+
+select set_config_parameter('MaxClientSessions',2000);
+
+
+select * from v_monitor.configuration_parameters where parameter_name like 'HistoryRetention%';
+select set_config_parameter('HistoryRetentionTime',-1);
+select set_config_parameter('HistoryRetentionEpochs',0);
+HistoryRetentionEpochs
+
+
+select set_config_parameter('DefaultSessionLocale','en_US');

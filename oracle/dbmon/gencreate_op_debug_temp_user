@@ -1,0 +1,44 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+CREATE USER op_debug_temp_user IDENTIFIED BY XXXXXX DEFAULT TABLESPACE POOL_DATA TEMPORARY TABLESPACE TEMP ACCOUNT UNLOCK;
+
+  GRANT CONNECTOR_WITH_OBJ_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT AAM_WORK_QUERY_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT CYP_WORK_QUERY_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT AUTHWORK_QUERY_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT NO_TOAD_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT PDLM_WORK_QUERY_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT REFREAD_QUERY_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT SO_WORK_QUERY_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT PARAM_WORK_UPDATOR_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT AUTHWORK_UPDATOR_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT REFWORK_QUERY_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT REF_APPL_UPDATOR_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT CONNECTOR_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT REFCORE_WORK_QUERY_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT REF_APPL_QUERY_ROLE TO OP_DEBUG_TEMP_USER;
+  GRANT ACMS_WORK_QUERY_ROLE TO OP_DEBUG_TEMP_USER;
+  ALTER USER OP_DEBUG_TEMP_USER DEFAULT ROLE ALL;
+  ALTER USER OP_DEBUG_TEMP_USER QUOTA 100M ON POOL_DATA;
+  GRANT SELECT ON OP_WORK.DBCONFIG TO OP_DEBUG_TEMP_USER;
+  grant OP_WORK_QUERY_ROLE to OP_DEBUG_TEMP_USER;
+
+set feed off pages 0
+spool /tmp/create_syn.sql
+select 'create synonym OP_DEBUG_TEMP_USER.'||synonym_name||' for '||table_owner||'.'||table_name||';' from dba_synonyms where owner='OP_USER' order by 1;
+spool off
+set feed on 
+@/tmp/create_syn.sql
+EOF
+
+rm -f /tmp/create_syn.sql
+add_to_alt_user_password.sh OP_DEBUG_TEMP_USER

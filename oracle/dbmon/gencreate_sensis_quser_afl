@@ -1,0 +1,43 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+typeset -u WNUMBER=`echo $1|cut -d. -f1`
+if [ -z "$WNUMBER" ]
+then
+  echo "Example: \n$0 12345 "
+  exit
+fi
+
+export NAME=SENSIS_QUSER_AFL_W${WNUMBER}  
+
+echo "      Creating User $NAME  $2 $3 $4"
+
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+DROP USER $NAME CASCADE;
+
+CREATE USER $NAME
+  IDENTIFIED BY $NAME
+  DEFAULT TABLESPACE pool_data
+  TEMPORARY TABLESPACE TEMP
+  PROFILE DEFAULT
+  ACCOUNT UNLOCK;
+
+  GRANT CONNECTOR_ROLE TO $NAME;
+  GRANT CTXAPP TO $NAME;
+
+  ALTER USER $NAME DEFAULT ROLE ALL;
+  ALTER USER $NAME PROFILE DEFAULT;
+
+  GRANT AFL_WORK_QUERY_ROLE to $NAME ; 
+  GRANT SP_WORK_QUERY_ROLE to $NAME ; 
+  
+EOF
+
+add_to_alt_user_password.sh $NAME

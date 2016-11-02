@@ -1,0 +1,63 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show free space at the end of each file
+#
+#  USAGE: showfileresize (optional percent) (optional tablespace_name)
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+echo Available space for resize down the tablespaces files 
+echo Do not forget to coalesce the tablespace first
+echo Please wait while querying the database...
+
+typeset -u PERCENT=`echo $1|cut -d. -f1`
+if [ -z "$PERCENT" ]
+then
+  PERCENT=20
+fi
+
+typeset -u TABLESPACE_NAME=`echo $2|cut -d. -f1`
+
+sqlplus -s "/ as sysdba" <<EOF
+col SEGMENT_NAME for a30
+col owner for a15
+col file_id for 999
+col tablespace_name for a30
+col file_name for a65
+col down_mb for 999,999 head "Resize|Amount(mb)"
+col resize_to_mb for 999,999 head "Resize|To(mb)"
+col size_mb for 999,999 head "Size(mb)"
+col Recommended for 999999 head "Recomnd=%$PERCENT"
+set pages 200
+set feed off tab off lines 150
+
+select tablespace_name,''''||file_name||'''' file_name,size_mb,down_mb,resize_to_mb+1 as resize_to_mb, 
+	   (case when Recommended >=  size_mb-1 then to_number(null) else Recommended end) Recommended
+from 	   
+(
+select 
+	   ddf.file_id, 
+	   ddf.tablespace_name, 
+	   ddf.file_name, ddf.bytes/1024/1024 size_mb , 
+	   down_mb , 
+	   (ddf.bytes/1024/1024 - down_mb) resize_to_mb, 
+	   ((ddf.bytes/1024/1024-df.bytes/1024/1024)/(1-.${PERCENT})) as Recommended
+from
+	dba_data_files ddf,
+		(
+		select FILE_ID, sum(dfs.bytes/1024/1024) down_mb
+		from  dba_free_space dfs
+		where  tablespace_name like upper('${TABLESPACE_NAME}%') and  block_id > (select max(BLOCK_ID) from dba_extents de where de.file_id=dfs.file_id)
+		group by FILE_ID
+		) dfs,
+		(select file_id , sum(bytes) bytes from dba_free_space where tablespace_name like upper('${TABLESPACE_NAME}%')  group by file_id) df
+where   
+		dfs.file_id=ddf.file_id and
+		ddf.file_id=df.file_id and
+        ddf.tablespace_name like upper('${TABLESPACE_NAME}%')
+)		
+order by tablespace_name;
+EOF
+
+exit

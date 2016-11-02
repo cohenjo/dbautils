@@ -1,0 +1,29 @@
+#!/bin/sh
+
+sqlplus -s "/ as sysdba" <<-EOSQL
+-- this is called from dba/bin/showtoad
+set feed off tab off
+col sid for 99999
+col serial# for 99999
+col username for a22 head "Oracle User"
+col osuser for a12
+col machine for a30
+col status for a5 trunc
+col prg_mod for a8 trunc
+alter session set nls_date_format = 'dd-MON:hh24:mi:ss';
+set feed off pages 80 lines 200
+select 
+inst_id,
+SID,
+SERIAL#,
+USERNAME,
+STATUS,
+OSUSER,
+PROCESS,
+MACHINE,
+LOGON_TIME, program||module PRG_MOD
+from gv\$session
+where 
+     (module = 'T.O.A.D.' or upper(program) like 'TOAD%' or  program like '%T.O.A.D%');
+quit
+EOSQL

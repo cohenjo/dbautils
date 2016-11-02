@@ -1,0 +1,112 @@
+#----------------------
+#RAC Server
+#----------------------
+supr04 db
+supr24 db
+supr08 db
+supr28 db
+suprd2 db
+suut28 db
+subc02 db
+subc04 db
+supd02 db
+#
+supf02 db
+supf22 db
+supf28 db
+#
+drcpr04 db
+drcpr08 db
+#drcpr28 db
+#drcpr24 db
+#----------------------
+#DB Server
+#----------------------
+sudv01 db
+sudv02 db
+sudp02 db
+sucn02 db
+suut02 db
+suut04 db
+suut06 db
+subl06 db
+subl04 db
+subl08 db
+suito1 db
+suito2 db
+#
+#----------------------
+#Clients Web
+#----------------------
+supdw1 web
+sustw1 web
+sustw2 web
+sustw3 web
+sustw5 web
+sustw6 web
+sustw4 web
+sutse1 web
+supde1 web
+sutse2 web
+sutse3 web
+sutse4 web
+sutse6 web
+suutw1 web
+suutw2 web
+suutw3 web
+suutw4 web
+suutw7 web
+suutw8 web
+suute1 web
+suute2 web
+suute3 web
+suute4 web
+suute5 web
+suprw3 web
+suprw4 web
+suprw5 web
+suprw6 web
+suprw7 web
+suprw8 web
+suprw9 web
+suprw10 web
+supre1 web
+supre2 web
+drcprw1 web
+drcprw2 web
+drcprw3 web
+drcprw4 web
+drcpre1 web
+drcpre2 web
+#
+#----------------------
+#Clients Proc
+#----------------------
+supf03 proc
+supf23 proc
+sust01 proc
+sust03 proc
+sust23 proc
+sudp01 proc
+suut01 proc
+suut03 proc
+supr03 proc
+supr21 proc
+supr23 proc
+supd01 proc
+drcpr03 proc
+#
+#----------------------
+#Clients Alf  
+#----------------------
+suuta1 alf 
+suuta2 alf 
+susta2 alf 
+susta3 alf 
+susta4 alf 
+susta5 alf 
+sustd1 dist
+sustd2 extract
+suutd1 dist
+suutd2 extract
+suutd4 extract

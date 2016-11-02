@@ -1,0 +1,343 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/kchang/bin/para_imp
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Kuen-Yih Chang (kchang)
+#  DATE            : $Date: Wed Apr 25 11:33:13 CDT 2001 $
+#
+#  This script is used to load conversion data, each table with a dmp
+#	1. prepare a parfile with table list from ddir
+#	2. get show output, prepare dr_cons.sql and cr_cons.sql
+#	3. run dr_cons.sql
+#	4. load dmp
+#	5. run cr_cons.sql
+#  Since it will generate many scripts and a log dir, run this in a clean
+#  directory is advisable.
+#
+#  USAGE: para_imp [-c connect_string] [-d dmp_dir] [-l log_dir]
+#
+#  Options: 
+#	-c cstr: target oracle connect string, eg: userid/password@service
+#	-d dir: directory for dmp files;
+#	-l dir: directory for log files; default to current dir
+#    DBA special:
+#	-p nnn: run parallel background loading for top nnn dmp files by size 
+#
+#  Example:
+#	para_imp
+#
+#  Modified: 
+#	01/17/2002 Thu: kchang: enable FK using tab_fk.lst
+#	01/18/2002 Fri: kchang: add analyze=n for lddmp imp
+#	01/18/2002 Fri: kchang: add logchk.sh
+#
+#*****************************************************************************
+
+[ `ls -1 para_imp.par *.dmp 2>/dev/null | wc -l` -gt 0 ] && {
+  echo "para_imp.par file or dmp files already exist!!  Please run in another directory."
+  exit 2
+}
+
+typeset -u askpn=Y
+typeset -i pn=0
+typeset -i pcnt=0
+while getopts c:d:l:p:n:t: flags
+do
+   case $flags in
+   c)
+      cstr=$OPTARG
+      ;;
+   d)
+      ddir=$OPTARG
+      ;;
+   l)
+      ldir=$OPTARG
+      ;;
+   p)
+      pn=$OPTARG
+      askpn=N
+      ;;
+   ?)
+      echo "\nERROR: You have specified an unknown option: $OPTARG\n"
+      usage $0
+      exit 2
+      ;;
+   esac
+done
+shift $(($OPTIND -1))
+
+while echo "quit" | sqlplus $cstr | grep ORA-
+do
+  echo "Enter Oracle username to import: \c"; read uid
+  echo "Enter password for $uid: \c"; stty -echo; read pwd; stty echo; echo
+  cstr=$uid/$pwd
+  askpn=Y
+done
+
+[ "$askpn" = "Y" ] && {
+echo "Enter degree of parallelism to run import [$pn]: \c"; read pn
+}
+while ! ( ls $ddir/*.dmp.gz 1>/dev/null ) 
+do
+  echo "Enter .dmp.gz file directory [$ddir]: \c"; read ddir
+done
+
+cdir=`pwd`
+ldir=${ldir:=$cdir/logs}
+[ -d "$ldir" ] || mkdir -p $ldir
+
+rm -f alltable.lst nonexist.lst nonexist.tmp loadlist
+
+# 1. prepare parfile with a table list from ddir
+echo 1. Prepare parfile with a table list from dmp files ....
+echo `date` "\n"
+
+(cd $ddir; ls *.dmp.gz) |sed "s/\.dmp\.gz//g" | tr "[A-Z]" "[a-z]" > alltable.lst
+
+cat <<-EOP > para_imp.par
+USERID=$cstr
+FILE=$uid.dmp
+LOG=exp_$uid.log
+ROWS=N
+TABLES=(
+`cd $ddir; ls *.dmp.gz |sed "s/\.dmp\.gz//g" | tr "[A-Z]" "[a-z]"`
+)
+EOP
+
+# 2. exp schema def, imp show=y, prepare dr_cons.sql and cr_cons.sql
+echo 2. exp schema def, imp show=y, prepare dr_cons.sql and cr_cons.sql
+echo `date` "\n"
+exp parfile=para_imp.par compress=n 2>&1 | grep -E "ORA-|EXP-" | tee nonexist.tmp
+cut -d" " -f2 nonexist.tmp | cut -d. -f2 | tr "[A-Z]" "[a-z]" | awk '{print "^"$1".dmp$" }' > nonexist.lst
+rm -f schema.sql dr_cons.sql cr_cons.sql
+imp $cstr show=Y file=$uid.dmp log=$uid.show full=y 2>&1 | grep -E "ORA-|IMP-"
+showimp2sql $uid.show > schema.sql
+sed -n "/^CREATE .*INDEX /,/\//p; /^ ALTER /,/\//p; /^ALTER /,/\//p" schema.sql|
+  sed "/^ALTER .* ADD  *CONSTRAINT .* FOREIGN KEY/,/\//d" |
+  sed "/^ALTER .* ENABLE CONSTRAINT .*[0-9]FK\"/,/\//d" > cr_cons.sql
+
+echo "set echo on" > dr_cons.sql
+awk '
+  /^ALTER .* ADD  *CONSTRAINT/ {
+    if ( $7 != "FOREIGN" ) {
+      printf "ALTER TABLE %s DROP CONSTRAINT %s\n\/\n",  $3, $6 }
+  }
+' cr_cons.sql >> dr_cons.sql
+awk '
+  /^CREATE .*INDEX/ {
+    idx=$3
+    if ( $2 == "UNIQUE" ) {idx=$4}
+    match ( idx, "_PK" )
+    if ( RSTART == 0 ) {printf "DROP INDEX %s \n\/\n", idx}
+  }
+' cr_cons.sql >> dr_cons.sql
+echo "quit" >> schema.sql
+echo "quit" >> cr_cons.sql
+echo "quit" >> dr_cons.sql
+
+# 2.1 prepare FK sql
+echo 2.1 prepare FK sql from all schema
+echo `date` "\n"
+exp userid=$cstr file=${uid}_all.dmp log=${uid}_all.log rows=n compress=n 2>&1 | grep -E "ORA-|EXP-"
+rm -f all_schema.sql dr_fk.sql cr_fk.sql
+imp $cstr show=Y file=${uid}_all.dmp log=${uid}_all.show full=y 2>&1 | grep -E "ORA-|IMP-"
+showimp2sql ${uid}_all.show > all_schema.sql
+sed -n '/^ALTER .* ADD  *CONSTRAINT .* FOREIGN KEY/,/\//p; 
+  /^ALTER .* ENABLE CONSTRAINT .*[0-9]FK"/,/\//p' all_schema.sql > cr_fk.sql
+
+echo "set echo on" > dr_fk.sql
+awk '/^ALTER .* ADD  *CONSTRAINT .* FOREIGN KEY/ {
+      printf "ALTER TABLE %s DROP CONSTRAINT %s\n\/\n",  $3, $6 
+} ' cr_fk.sql >> dr_fk.sql
+
+grep "^ALTER TABLE" cr_fk.sql | awk '{print $3}' | sort -u | sed 's/"//g' | tr "A-Z" "a-z" > tab_fk.lst
+echo "quit" >> all_schema.sql
+echo "quit" >> cr_fk.sql
+echo "quit" >> dr_fk.sql
+
+# 4. load dmp
+(cd $ddir; ls -1s *.dmp.gz) | grep -v -f $cdir/nonexist.lst | awk '{printf("%10d %s\n", $1, $2)}' | sort -r | awk '{print $2}' | cut -d. -f1 > tabpart.lst
+(cd $ddir; ls -1s *.dmp.gz) | cut -d. -f1 | cut -d: -f1 | awk '{if ( tbl != $2 ) { printf("%10d %s\n", s, tbl); tbl=$2; s=$1} } END {printf("%10d %s\n", s, tbl)}' | sort -r | sed "$ d" | awk '{print $2}' > tabonly.lst
+typeset -i eoj=`cat tabpart.lst | wc -l`
+seq=`basename $0`_$$
+echo "create sequence ${seq}_1;
+create sequence ${seq}_2;
+create sequence ${seq}_3;"  | sqlplus -s /
+
+cat <<-EOSH > $cdir/lddmp.sh 
+#!/bin/sh
+
+cd $ddir
+export NLS_LANG=AMERICAN_AMERICA.WE8ISO8859P1
+typeset -i jno=\`echo "set pages 0 feed off
+select ${seq}_1.nextval from dual;" | sqlplus -s / \`
+while [ \$jno -le $eoj ]
+do 
+  tbl=\`sed -n "\$jno p" $cdir/tabpart.lst\`
+  echo \`date\` importing \$tbl \$jno of $eoj ...
+  gzimp buffer=40960000 commit=y ignore=y full=y grants=n indexes=n constraints=n analyze=n file=\$tbl.dmp log=$ldir/\$tbl.log userid=$cstr 2>&1 | grep -E "ORA-|IMP-" 
+  jno=\`echo "set pages 0 feed off
+select ${seq}_1.nextval from dual;" | sqlplus -s / \`
+done
+echo process finished last seq got \$jno / $eoj
+
+EOSH
+
+chmod 700 lddmp.sh
+
+# 5. add constraints in table list 
+mkdir $cdir/cr_cons
+typeset -i eoj=`cat tabonly.lst | wc -l`
+cat <<-EOSH > cr_con.sh 
+#!/bin/sh
+
+cd $cdir/cr_cons
+typeset -u TBL=
+typeset -i jno=\`echo "set pages 0 feed off
+select ${seq}_2.nextval from dual;" | sqlplus -s / \`
+while [ \$jno -le $eoj ]
+do
+  tbl=\`sed -n "\$jno p" $cdir/tabonly.lst\`
+  echo \`date\` Adding constraints for \$tbl \$jno of $eoj ...
+  TBL=\$tbl
+  # adi insert timing on and time on to the cr_con... scripts
+  ############################################################
+  echo "set echo on timing on time on" > cr_con_\$tbl.sql
+  echo "WHENEVER SQLERROR EXIT;" >> cr_con_\$tbl.sql
+  sed -n '/CREATE .*INDEX .* ON "'\$TBL'"/,/\// p;
+      /ALTER TABLE "'\$TBL'"/,/\// p' $cdir/cr_cons.sql >> cr_con_\$tbl.sql
+  echo "quit" >> cr_con_\$tbl.sql
+  if [ \`cat cr_con_\$tbl.sql | wc -l\` -eq 2 ]
+  then
+    rm -f cr_con_\$tbl.sql
+    echo "   Skipping \$tbl since no constraints defined ..."
+  else
+    sqlplus $cstr @cr_con_\$tbl.sql > cr_con_\$tbl.log 2>&1 
+  fi
+  jno=\`echo "set pages 0 feed off
+select ${seq}_2.nextval from dual;" | sqlplus -s / \`
+done
+echo process finished last seq got \$jno / $eoj
+
+EOSH
+
+chmod 700 cr_con.sh
+
+# 6. enable all foreign keys
+mkdir $cdir/cr_fk
+typeset -i eoj=`cat tab_fk.lst | wc -l`
+cat <<-EOSH > $cdir/cr_fk.sh 
+#!/bin/sh
+
+cd $cdir/cr_fk
+typeset -u TBL=
+typeset -i jno=\`echo "set pages 0 feed off
+select ${seq}_3.nextval from dual;" | sqlplus -s / \`
+while [ \$jno -le $eoj ]
+do
+  tbl=\`sed -n "\$jno p" $cdir/tab_fk.lst\`
+  echo \`date\` Enabling FKs for \$tbl \$jno of $eoj ...
+  TBL=\$tbl
+  echo "set echo on timing on time on" > cr_fk_\$tbl.sql
+  sed -n '/ALTER TABLE "'\$TBL'"/,/\// p' $cdir/cr_fk.sql >> cr_fk_\$tbl.sql
+  echo "quit" >> cr_fk_\$tbl.sql
+  if [ \`cat cr_fk_\$tbl.sql | wc -l\` -eq 2 ]
+  then
+    rm -f cr_fk_\$tbl.sql
+    echo "   Skipping \$tbl since no FK defined ..."
+  else
+    sqlplus $cstr @cr_fk_\$tbl.sql > cr_fk_\$tbl.log 2>&1
+  fi
+  jno=\`echo "set pages 0 feed off
+select ${seq}_3.nextval from dual;" | sqlplus -s / \`
+done
+echo process finished last seq got \$jno / $eoj
+
+EOSH
+
+chmod 700 $cdir/cr_fk.sh
+
+# prepare logchk.sh
+cat <<-EOSH > $cdir/logchk.sh
+#!/bin/sh
+
+echo "\nChecking current directory for any ORA- errors
+========================================================\n"
+grep "^ORA-" *.log && sed -n '/^DROP /,/^ORA-/ p;/^CREATE /,/^ORA-/ p;/^ALTER /,/^ORA-/ p;' *log*
+cd logs
+echo "\nChecking logs directory for any ORA- or IMP- errors
+========================================================\n"
+egrep "^ORA-|^IMP-" *log | grep -v "IMP-00057"
+cd ../cr_cons
+echo "\nChecking cr_cons directory for any ORA- errors
+========================================================\n"
+grep "^ORA-" *log
+cd ../cr_fk
+echo "\nChecking cr_fk directory for any ORA- errors
+========================================================\n"
+grep "^ORA-" *log
+echo "\n========== END OF LOG CHECKING ========================\n"
+
+
+EOSH
+
+chmod 700 $cdir/logchk.sh
+
+
+echo "\n****************\nDo you really want to run now? \c"; read dummy
+[ "$dummy" = "Y" -o "$dummy" = "y" ] || exit
+
+# 3. disable all foreign keys / drop constraints in table list
+echo 3. disable all foreign keys / drop constraints in table list
+echo `date` "\n"
+sqlplus $cstr @dr_fk.sql > dr_fk.log 2>&1
+sqlplus $cstr @dr_cons.sql > dr_cons.log 2>&1
+
+# 4. load data
+echo 4. load dmp
+echo `date` "\n"
+pcnt=1
+while [ $pcnt -le $pn ]
+do
+  echo running lddmp.sh $pcnt ....
+  lddmp.sh > lddmp.log$pcnt 2>&1 &
+  (( pcnt = pcnt + 1 ))
+done
+wait
+
+#adi add the wait
+echo "\n****************\nIt about to enable constraints, Do you want to continue? (y or n) \c"; read dummy
+[ "$dummy" = "Y" -o "$dummy" = "y" ] || exit
+
+# 5.
+echo 5. add constraints in table list in $pn parallel
+echo `date` "\n"
+pcnt=1
+while [ $pcnt -le $pn ]
+do
+  echo running cr_con.sh $pcnt ....
+  $cdir/cr_con.sh > $cdir/cr_con.log$pcnt 2>&1 &
+  (( pcnt = pcnt + 1 ))
+done
+wait
+
+#adi add the wait
+echo "\n****************\nIt about to enable foreign keys, Do you want to continue? (y or n) \c"; read dummy
+[ "$dummy" = "Y" -o "$dummy" = "y" ] || exit
+
+# 6.
+echo 6. enable all foreign keys
+echo `date` "\n"
+pcnt=1
+while [ $pcnt -le $pn ]
+do
+  echo running cr_fk.sh $pcnt ....
+  $cdir/cr_fk.sh > $cdir/cr_fk.log$pcnt 2>&1 &
+  (( pcnt = pcnt + 1 ))
+done
+
+wait
+
+cd $cdir
+./logchk.sh

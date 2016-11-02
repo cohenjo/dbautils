@@ -1,0 +1,70 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show process information
+#
+#  USAGE: dist file_name
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+FILE_NAME=$1
+FILE_PATH=`pwd`
+MACHINE_LIST=$ORACLE_MON/dist_machines_hp11.lst
+LOCAL_HOST=`hostname`
+OPT_DIR=
+
+if [ $LOCAL_HOST != 'paux01' ] 
+then
+  echo "Distributed file should be from paux01"
+  exit 1
+fi
+
+if [ -z "$FILE_NAME" ] 
+then
+  echo "filename must be provided"
+  exit 1
+fi
+
+#================================================
+#check if file exists
+#================================================
+ls $FILE_PATH/$FILE_NAME |wc -l | read file_ok
+if (( $file_ok == "0" )) 
+then
+  exit 1
+fi
+
+#================================================
+# Get oravl for local mochine
+#================================================
+cat ${MACHINE_LIST} | grep $LOCAL_HOST | read RCOMMAND MACHINE_NAME ORACLE_USER LOCAL_ORAVLDIR
+
+cat ${MACHINE_LIST} | while read RCOMMAND MACHINE_NAME ORACLE_USER ORAVL_DIR
+do
+	echo "$MACHINE_NAME\c"
+	if [ $LOCAL_HOST = $MACHINE_NAME ]
+	then
+		echo " - Skipping local host... "
+	else
+		LOCAL_FILE="${FILE_PATH}/${FILE_NAME}"
+		DEST_ORAVL=`echo "$FILE_PATH" | awk -F$LOCAL_ORAVLDIR '{ print $2 }'`
+		DEST_DIR="${ORAVL_DIR}${DEST_ORAVL}"
+
+		#=======================================================
+		#check for logon name, if not oracel then copy as local
+		#=======================================================
+		echo $LOGNAME |grep oracle|wc -l | read logon_oracle
+		if (( $logon_oracle == "0" )) 
+		then
+		  ORACLE_USER=$LOGNAME
+		fi
+
+		echo " - Executing \"$RCOMMAND ${FILE_PATH}/${FILE_NAME} ${ORACLE_USER}@${MACHINE_NAME}:${DEST_DIR}\" in background"
+		$RCOMMAND ${FILE_PATH}/${FILE_NAME} ${ORACLE_USER}@${MACHINE_NAME}:${DEST_DIR}  &
+	fi
+done
+echo "Waiting for distributing to finish...\c"
+wait
+echo "Done."
+

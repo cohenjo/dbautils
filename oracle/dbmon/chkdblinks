@@ -1,0 +1,63 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to user objects 
+#
+#  USAGE: chkdblinks
+#
+#*****************************************************************************
+
+export RUN_SQL_FILE=/tmp/chkdblink_$$.sql
+export RUN_SQL_LOG=/tmp/chkdblink_$$.log
+export RUN_SQL_LOG_TOT=/tmp/chkdblink_tot_$$.log
+
+rm -f $RUN_SQL_LOG_TOT
+touch $RUN_SQL_LOG_TOT
+echo "**************************************************************"
+echo "Check dblinks for $ORACLE_SID "
+echo "**************************************************************"
+echo " set pages 0 lines 199 trimsp on feed off echo off
+col owner for a30
+col db_link for a60
+select replace(owner,'PUBLIC','SYSTEM') owner,owner as real_owner, DB_LINK from dba_db_links
+/ " | sqlplus -s "/ as sysdba" |while read OWNER_CHK OWNER DBLINK
+do
+    case $OWNER in 
+    PUBLIC) 
+        CONNECTION="/"
+        PASSWORD="exists"
+    ;;
+    *)
+       PASSWORD=`cat -s ~/adm/$ORACLE_SID/create/*/alt_user_password.sql | awk '{ print $3 "     \t " $6 }' | grep -i "^$OWNER " | awk '{ print $2 }' `
+       CONNECTION="${OWNER}/${PASSWORD}"
+    ;;
+    esac
+
+    echo "Checking ${OWNER}.${DBLINK} \c"
+    if [ -z "$PASSWORD" ]
+    then
+        echo " - skipped (pass not in file)"
+    else
+	echo "set pages 0 lines 199 trimsp on feed off echo off
+	conn $CONNECTION               
+	set echo off
+	select 'ok' from dual@$DBLINK
+/ " | sqlplus -s "/ as sysdba" > $RUN_SQL_LOG
+	cat $RUN_SQL_LOG | grep 'ORA-' | wc -l | read result
+	if (( $result>0 ))
+	then
+		echo "- Error"
+		echo "*******************************************************************" >> $RUN_SQL_LOG_TOT
+		echo "Error at ${OWNER}.${DBLINK} " >> $RUN_SQL_LOG_TOT
+		cat $RUN_SQL_LOG |grep "ORA-" >> $RUN_SQL_LOG_TOT
+	else
+		echo "- ok"
+	fi
+    fi
+done
+cat $RUN_SQL_LOG_TOT
+echo "*******************************************************************" 
+
+rm -f $RUN_SQL_FILE
+rm -f $RUN_SQL_LOG
+rm -f $RUN_SQL_LOG_TOT

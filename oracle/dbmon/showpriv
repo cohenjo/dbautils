@@ -1,0 +1,27 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to find view 
+#
+#  USAGE: showpriv
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  export NAME='%'
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 132
+column name format a50
+select name from SYSTEM_PRIVILEGE_MAP
+where name like upper('%${NAME}%')
+/
+EOF

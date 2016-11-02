@@ -1,0 +1,214 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+CREATE USER CNV_DOWNLOAD_BATCH
+  IDENTIFIED BY YOSSIPHAMTHOAIAMOL
+  DEFAULT TABLESPACE CONV_DATA
+  TEMPORARY TABLESPACE TEMP
+  PROFILE DEFAULT
+  ACCOUNT UNLOCK;
+  CREATE ROLE NO_TOAD_ROLE;
+  grant create database link to cnv_download_batch;
+  GRANT CONNECT TO CNV_DOWNLOAD_BATCH;
+  GRANT SELECT_CATALOG_ROLE TO CNV_DOWNLOAD_BATCH;
+  GRANT RESOURCE TO CNV_DOWNLOAD_BATCH;
+  ALTER USER CNV_DOWNLOAD_BATCH DEFAULT ROLE ALL;
+
+  -- Normal Access to all Tables
+
+  GRANT UPDATE ANY TABLE TO CNV_DOWNLOAD_BATCH;
+  GRANT INSERT ANY TABLE TO CNV_DOWNLOAD_BATCH;
+  GRANT SELECT ANY TABLE TO CNV_DOWNLOAD_BATCH;
+  GRANT DELETE ANY TABLE TO CNV_DOWNLOAD_BATCH;
+
+  GRANT SELECT ANY SEQUENCE TO CNV_DOWNLOAD_BATCH;
+  GRANT CREATE SYNONYM TO CNV_DOWNLOAD_BATCH;
+
+  GRANT LOCK ANY TABLE TO CNV_DOWNLOAD_BATCH;
+
+grant execute on dbms_stats to cnv_download_batch;
+  grant create any directory to cnv_download_batch;
+  grant alter any sequence to cnv_download_batch;
+  grant drop any directory to cnv_download_batch;
+
+  grant SEC_ENCRYPT_ROLE  to cnv_download_batch;
+  GRANT NO_TOAD_ROLE to CNV_DOWNLOAD_BATCH;
+  GRANT execute on DBMS_SNAPSHOT to CNV_DOWNLOAD_BATCH;
+  grant execute on REF_APPL.AMDOCS_SECURITY to CNV_DOWNLOAD_BATCH;
+  grant execute on REF_APPL.AMDOCS_SECURITY_USER to CNV_DOWNLOAD_BATCH;
+  grant execute on REF_APPL.GET_NORMALIZED_NAME to cnv_download_batch;
+  grant execute on REF_APPL.GET_NORMALIZED_NAME_CASE to cnv_download_batch;
+
+-- ABP
+  grant BLAPPO_ALL     to cnv_download_batch; 
+  grant BLOPRO_ALL     to cnv_download_batch; 
+  grant BLREFWORK_ALL  to cnv_download_batch; 
+  grant SLFDBO2_ALL    to cnv_download_batch; 
+  grant SLFORDO2_ALL   to cnv_download_batch; 
+  grant SLFREPO2_ALL   to cnv_download_batch; 
+  grant TSTDBO2_ALL    to cnv_download_batch; 
+  grant XBLSEC2_ALL    to cnv_download_batch; 
+  grant XBLSECO_ALL    to cnv_download_batch; 
+
+  alter user cnv_download_batch quota unlimited on conv_data;
+
+-- Revoke old priv which not allowed
+  revoke unlimited tablespace from cnv_download_batch;
+  revoke CREATE ANY SYNONYM FROM CNV_DOWNLOAD_BATCH;
+  revoke DROP ANY SYNONYM FROM CNV_DOWNLOAD_BATCH;
+  revoke alter any sequence from cnv_download_batch;
+
+alter USER CNV_DOWNLOAD_BATCH IDENTIFIED BY YOSSIPHAMTHOAIAMOL;
+alter USER CNV_DOWNLOAD_BATCH default tablespace conv_data;
+
+  grant alter system to cnv_download_batch;
+
+prompt creating SYS.CONVERSION_DROP_PK
+
+CREATE OR REPLACE PROCEDURE SYS.CONVERSION_DROP_PK (IN_OWNER VARCHAR2, IN_TABLE_NAME VARCHAR2) 
+IS
+      curr_user      varchar2(30);
+      str            varchar2(200);
+      NOT_ALLOWED exception;
+      CURSOR get_user IS SELECT user FROM dual;
+BEGIN
+      OPEN get_user;
+      FETCH get_user INTO curr_user;
+      CLOSE get_user;
+
+      IF (curr_user <> 'CNV_DOWNLOAD_BATCH') then
+        RAISE NOT_ALLOWED;
+      END IF;
+
+      EXECUTE IMMEDIATE 'ALTER TABLE '||in_owner||'.'||IN_TABLE_NAME||' DROP PRIMARY KEY';
+
+      EXCEPTION
+      WHEN NOT_ALLOWED THEN
+           RAISE_APPLICATION_ERROR(-20001,'ONLY CNV_DOWNLOAD_BATCH ALLOW TO DROP PK, ERROR');
+      WHEN OTHERS THEN
+           RAISE_APPLICATION_ERROR(SQLERRM,'COULD NOT DROP PK');
+END;
+/
+prompt creating SYS.CONVERSION_DROP_IK
+
+CREATE OR REPLACE PROCEDURE SYS.CONVERSION_DROP_IX (IN_OWNER VARCHAR2, IN_INDEX_NAME VARCHAR2) 
+IS
+      curr_user      varchar2(30);
+      str            varchar2(200);
+      NOT_ALLOWED exception;
+      CURSOR get_user IS SELECT user FROM dual;
+BEGIN
+      OPEN get_user;
+      FETCH get_user INTO curr_user;
+      CLOSE get_user;
+
+      IF (curr_user <> 'CNV_DOWNLOAD_BATCH') then
+        RAISE NOT_ALLOWED;
+      END IF;
+
+      EXECUTE IMMEDIATE 'DROP INDEX '||in_owner||'.'||IN_INDEX_NAME;
+
+      EXCEPTION
+      WHEN NOT_ALLOWED THEN
+           RAISE_APPLICATION_ERROR(-20001,'ONLY CNV_DOWNLOAD_BATCH ALLOW TO DROP INDEX , ERROR');
+      WHEN OTHERS THEN
+           RAISE_APPLICATION_ERROR(SQLERRM,'COULD NOT DROP PK');
+END;
+/
+prompt creating SYS.CONVERSION_ALIGN_SEQ
+
+CREATE OR REPLACE PROCEDURE SYS.CONVERSION_ALIGN_SEQ (IN_SEQUENCE_OWNER VARCHAR2, IN_SEQUENCE_NAME VARCHAR2, IN_VALUE NUMBER)
+IS
+      curr_user      varchar2(30);
+      v_objname      varchar2(200);
+      v_count		 NUMBER:=0;
+      v_max			 NUMBER;
+      v_min			 NUMBER;
+      v_last		 NUMBER;
+      v_increment	 NUMBER;
+      v_new_next_val NUMBER;
+      NOT_ALLOWED	 exception;
+      NOT_FOUND		 exception;
+      NOT_IN_RANGE	 exception;
+      CURSOR get_user IS SELECT user FROM dual;
+BEGIN
+      OPEN get_user;
+      FETCH get_user INTO curr_user;
+      CLOSE get_user;
+      IF (curr_user <> 'CNV_DOWNLOAD_BATCH') then
+        RAISE NOT_ALLOWED;
+      END IF;
+
+       -- Check sequence exist
+      v_objname:=IN_SEQUENCE_OWNER||'.'||IN_SEQUENCE_NAME;
+
+	  SELECT COUNT(*) INTO v_count
+      FROM ALL_SEQUENCES WHERE SEQUENCE_NAME = IN_SEQUENCE_NAME AND SEQUENCE_OWNER=IN_SEQUENCE_OWNER;
+      IF (v_count < 1 ) then
+			dbms_output.put_line('SEQ '||v_objname||' could not found is the database');
+			RAISE NOT_FOUND;
+      END IF;
+
+      -- Check value between min and max of the sequence
+      SELECT MIN_VALUE, MAX_VALUE
+	  INTO   v_min , v_max
+      FROM ALL_SEQUENCES WHERE SEQUENCE_NAME = IN_SEQUENCE_NAME AND SEQUENCE_OWNER=IN_SEQUENCE_OWNER;
+
+	  IF IN_VALUE NOT BETWEEN v_min AND v_max
+      THEN
+			RAISE NOT_IN_RANGE;
+      END IF;
+
+      -- Calculate the increment by change
+      EXECUTE IMMEDIATE 'SELECT '||v_objname ||'.NEXTVAL FROM DUAL 'into v_last;
+      v_increment:=IN_VALUE-v_last;
+
+      -- Align the sequence
+      EXECUTE IMMEDIATE 'ALTER SEQUENCE ' || v_objname ||' increment by '|| to_char(v_increment);
+      EXECUTE IMMEDIATE 'SELECT '||v_objname ||'.NEXTVAL FROM DUAL 'into v_new_next_val;
+      EXECUTE IMMEDIATE 'ALTER SEQUENCE ' || v_objname ||' increment by 1';
+
+	  dbms_output.put_line('The new next value was set to: '||to_char(v_new_next_val));
+
+EXCEPTION
+      WHEN NOT_ALLOWED THEN
+           RAISE_APPLICATION_ERROR(-20001,'ONLY CNV_DOWNLOAD_BATCH ALLOW TO ALIGN SEQ, ERROR');
+
+      WHEN NOT_FOUND THEN
+           RAISE_APPLICATION_ERROR(-20002,'SEQUENCE is not found');
+
+      WHEN NOT_IN_RANGE THEN
+           RAISE_APPLICATION_ERROR(-20003,'SEQUENCE is not in correct range');
+
+      WHEN OTHERS THEN
+           RAISE_APPLICATION_ERROR(SQLERRM,'COULD NOT ALIGN SEQ');
+END;
+/
+show err
+
+grant execute on SYS.CONVERSION_ALIGN_SEQ to CNV_DOWNLOAD_BATCH;
+grant execute on SYS.CONVERSION_DROP_PK to CNV_DOWNLOAD_BATCH;
+grant execute on SYS.CONVERSION_DROP_IX to CNV_DOWNLOAD_BATCH;
+
+create or replace synonym CNV_DOWNLOAD_BATCH.CONVERSION_ALIGN_SEQ for SYS.CONVERSION_ALIGN_SEQ;
+create or replace synonym CNV_DOWNLOAD_BATCH.CONVERSION_DROP_PK for SYS.CONVERSION_DROP_PK;
+create or replace synonym CNV_DOWNLOAD_BATCH.CONVERSION_DROP_IX for SYS.CONVERSION_DROP_IX;
+
+create or replace synonym cnv_download_batch.get_normalized_name for ref_appl.get_normalized_name;
+
+--Example:
+--set serveroutput on 
+--execute CONVERSION_DROP_PK('SO_WORK','OM_PURCHASED_OFFER');
+--execute CONVERSION_DROP_IX('SO_WORK','OM_PURCHASED_OFFER_PK');
+--execute CONVERSION_DROP_IX('SO_WORK','OM_PURCHASED_OFFER_1IX');
+--select sp_work.SP_NOTE_ID_SEQ.nextval from dual;
+--execute CONVERSION_ALIGN_SEQ('SP_WORK','SP_NOTE_ID_SEQ',10);
+EOF

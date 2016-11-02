@@ -1,0 +1,58 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to check tablespace with less percentage
+#
+#  USAGE: showtpct percentage
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u PERCENTAGE=`echo $1|cut -d. -f1`
+if [ -z "$PERCENTAGE" ] 
+then
+  echo "Percentage ranging from 1 to 100: \c"; read PERCENTAGE
+fi
+
+sqlplus -s / <<EOF
+set term off
+set pagesize 60
+set verify off
+set term on
+set feedback off
+set lines 130 pagesize 60 tab off
+
+column MB format 9,999,999  heading "Total MB"
+column free format 9,999,999 heading "Free MB"
+column used format 9,999,999 heading "Used MB"
+column Largest format 999,999 heading "LrgstMB"
+column tablespace_name format a26 heading "Tablespace"
+column status format a4 truncated
+column max_ext format 99,999 heading "MaxExt"
+column pct_free format 99,999 heading "TPCT"
+column Recommended format 999,999,999 heading "Recomnd=%$PERCENTAGE"
+
+prompt "Tablespace with less than ${PERCENTAGE}% free space"
+
+select d.tablespace_name, d.status, NVL (a.bytes / 1024 / 1024, 0) MB,
+	NVL (f.bytes / 1024 / 1024, 0) free, 
+	(NVL (a.bytes / 1024 / 1024, 0) - NVL (f.bytes / 1024 / 1024, 0)) used,
+	round(f.bytes/(a.bytes-f.bytes)*100,0) pct_free,
+	((a.bytes/1024/1024-f.bytes/1024/1024)/(1-.$PERCENTAGE)) as "Recommended"
+	  FROM sys.dba_tablespaces d,
+       (SELECT   tablespace_name, SUM(bytes) bytes
+            FROM dba_data_files
+        GROUP BY tablespace_name) a,
+       (SELECT   tablespace_name, SUM(bytes) bytes
+            FROM dba_free_space
+        GROUP BY tablespace_name) f,
+       (SELECT   tablespace_name, MAX(bytes) large
+            FROM dba_free_space
+        GROUP BY tablespace_name) l
+ WHERE d.tablespace_name = a.tablespace_name(+)
+   AND d.tablespace_name = f.tablespace_name(+)
+   AND d.tablespace_name = l.tablespace_name(+)
+   AND round(f.bytes/(a.bytes-f.bytes)*100,0) <= $PERCENTAGE
+order by 4 desc
+/
+EOF

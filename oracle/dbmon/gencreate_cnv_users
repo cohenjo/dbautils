@@ -1,0 +1,95 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+export USER=$1
+export PASSWORD=$2
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on escape on
+define USER_NAME=${USER}
+define USER_PWD=${PASSWORD}
+CREATE USER &USER_NAME
+  IDENTIFIED BY &USER_PWD
+  DEFAULT TABLESPACE CONV_DATA
+  TEMPORARY TABLESPACE TEMP
+  PROFILE DEFAULT
+  ACCOUNT UNLOCK;
+  CREATE ROLE NO_TOAD_ROLE;
+  grant create database link to &USER_NAME;
+  GRANT CONNECT TO &USER_NAME;
+  GRANT SELECT_CATALOG_ROLE TO &USER_NAME;
+  GRANT RESOURCE TO &USER_NAME;
+  grant create view to &USER_NAME;
+  ALTER USER &USER_NAME DEFAULT ROLE ALL;
+
+  alter user &USER_NAME IDENTIFIED BY &USER_PWD;
+alter user  &USER_NAME account unlock;
+
+  -- Normal Access to all Tables
+
+  GRANT UPDATE ANY TABLE TO &USER_NAME;
+  GRANT INSERT ANY TABLE TO &USER_NAME;
+  GRANT SELECT ANY TABLE TO &USER_NAME;
+  GRANT DELETE ANY TABLE TO &USER_NAME;
+
+  GRANT SELECT ANY SEQUENCE TO &USER_NAME;
+  GRANT ALTER ANY SEQUENCE TO &USER_NAME;
+  GRANT CREATE SYNONYM TO &USER_NAME;
+
+  GRANT LOCK ANY TABLE TO &USER_NAME;
+
+grant execute on dbms_stats to &USER_NAME;
+  grant create any directory to &USER_NAME;
+  grant alter any sequence to &USER_NAME;
+  grant drop any directory to &USER_NAME;
+
+  grant SEC_ENCRYPT_ROLE  to &USER_NAME;
+  GRANT NO_TOAD_ROLE to &USER_NAME;
+  GRANT execute on DBMS_SNAPSHOT to &USER_NAME;
+  grant execute on REF_APPL.AMDOCS_SECURITY to &USER_NAME;
+  grant execute on REF_APPL.AMDOCS_SECURITY_USER to &USER_NAME;
+  grant execute on REF_APPL.GET_NORMALIZED_NAME to &USER_NAME;
+  grant execute on REF_APPL.GET_NORMALIZED_NAME_CASE to &USER_NAME;
+
+-- ABP
+  grant BLAPPO_ALL     to &USER_NAME; 
+  grant BLOPRO_ALL     to &USER_NAME; 
+  grant BLREFWORK_ALL  to &USER_NAME; 
+  grant SLFDBO2_ALL    to &USER_NAME; 
+  grant SLFORDO2_ALL   to &USER_NAME; 
+  grant SLFREPO2_ALL   to &USER_NAME; 
+  grant TSTDBO2_ALL    to &USER_NAME; 
+  grant XBLSEC2_ALL    to &USER_NAME; 
+  grant XBLSECO_ALL    to &USER_NAME; 
+
+  alter user &USER_NAME quota unlimited on conv_data;
+
+-- Revoke old priv which not allowed
+  revoke unlimited tablespace from &USER_NAME;
+  revoke CREATE ANY SYNONYM FROM &USER_NAME;
+  revoke DROP ANY SYNONYM FROM &USER_NAME;
+--  revoke alter any sequence from &USER_NAME;
+
+-- alter USER &USER_NAME IDENTIFIED BY YOSSIPHAMTHOAIAMOL;
+alter USER &USER_NAME default tablespace conv_data;
+
+grant alter system to &USER_NAME;
+
+grant execute on SYS.CONVERSION_ALIGN_SEQ to &USER_NAME;
+grant execute on SYS.CONVERSION_DROP_PK to &USER_NAME;
+grant execute on SYS.CONVERSION_DROP_IX to &USER_NAME;
+grant execute on SYS.CONVERSION_TRUNCATE to &USER_NAME;
+
+create or replace synonym &USER_NAME\.CONVERSION_ALIGN_SEQ for SYS.CONVERSION_ALIGN_SEQ;
+create or replace synonym &USER_NAME\.CONVERSION_DROP_PK for SYS.CONVERSION_DROP_PK;
+create or replace synonym &USER_NAME\.CONVERSION_DROP_IX for SYS.CONVERSION_DROP_IX;
+create or replace synonym &USER_NAME\.CONVERSION_TRUNCATE for SYS.CONVERSION_TRUNCATE;
+
+create or replace synonym &USER_NAME\.get_normalized_name for ref_appl.get_normalized_name;
+
+EOF

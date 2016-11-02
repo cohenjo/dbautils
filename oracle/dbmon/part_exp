@@ -1,0 +1,98 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba//bin/part_exp
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Adi Zohar
+#  AUTHOR          : Kuen-Yih Chang (kchang@amdocs.com)
+#  DATE            : $Date: Tue Oct  2 18:06:44 CDT 2001 $
+#
+#  This script is used to export table by partitions.  gzexp will be used.
+#  Also, should run this script as local (ORACLE_SID or TWO_TASK is set).
+#  The dmp file generated will contain only data without any constraints, and
+#  a sql is generated for all DDLs, including constraints and grants.
+#  !! constraints=y only works with 8i !!
+#
+#  USAGE: part_exp owner.table_name
+#
+#  Options: 
+#
+#  Example:
+#
+#*****************************************************************************
+
+typeset -l pttn=
+typeset -l LOWER_TABLE=
+
+typeset -u NAME=$1
+typeset -u TABLE_NAME=
+typeset -u OWNER=
+
+PARALLEL_SIZE=10
+
+if [ -z "$NAME" ] 
+then
+  echo "OWNER.TABLE_NAME must be provided: \c"; read NAME
+fi
+
+echo $NAME | awk -F"." '{print $1 " " $2 }' | read OWNER TABLE_NAME
+
+if [ -z "$TABLE_NAME" ] 
+then
+  echo "OWNER.TABLE_NAME must be provided, aborting \c"
+  exit 1
+fi
+
+LOWER_TABLE=$TABLE_NAME
+
+#==============================================================================
+#get character set
+#==============================================================================
+echo "set pages 0
+set lines 99 echo off
+set feedback off verify off
+select a.value||'_'||b.value||'.'||c.value param from
+           NLS_DATABASE_PARAMETERS a,
+           NLS_DATABASE_PARAMETERS b,
+           NLS_DATABASE_PARAMETERS c
+where
+          a.parameter='NLS_LANGUAGE' and
+          b.parameter='NLS_TERRITORY' and
+          c.parameter='NLS_CHARACTERSET'
+/ " | sqlplus -s "/ as sysdba" | read NLS_PARAM
+
+export NLS_LANG=$NLS_PARAM
+
+echo "1. Database $ORACLE_SID Characterset is: $NLS_LANG "
+
+#==============================================================================
+#Export in the background
+#==============================================================================
+cyc=0
+
+echo "set feed off pages 0 lines 199
+select partition_name from dba_tab_partitions where table_name='$TABLE_NAME' and table_owner='$OWNER';" | 
+sqlplus -s "/ as sysdba" | while read pttn
+do
+  gzexp direct=y tables=${OWNER}.${TABLE_NAME}:$pttn grants=n indexes=n statistics=none constraints=n compress=n file=$pttn.dmp CONSISTENT=Y log=exp_$pttn.log userid=/ 1>/dev/null 2>&1 &
+  (( cyc=cyc+1 ))
+
+        # count the parallel cycle
+        if (( cyc%${PARALLEL_SIZE}==0 ))
+        then
+                echo "waiting..."
+                wait
+        fi
+
+done
+echo "2. Exporting ${OWNER}.${TABLE_NAME} - $cyc Partitions (Started at `date`) in background...." 
+wait
+
+ROWS=`grep "rows exported" exp_${LOWER_TABLE}*.log | awk '{print $6}' | awk '{ s += $1 } END {printf("Total %d\n",s)}' `
+NO_ERRORS=`grep "Export terminated" exp_${LOWER_TABLE}*.log | grep without | wc -l `
+ERRORS=`grep "Export terminated" exp_${LOWER_TABLE}*.log | grep "with wa" | wc -l `
+
+echo "3. Finish exporting ${OWNER}.${TABLE_NAME} - $ROWS rows (Finish  at `date`)."
+echo "4. Checking Logs: $NO_ERRORS exported sucessfully, $ERRORS exported with warnings"
+rm -f ${LOWER_TABLE}*.dmp
+echo "5. Done"

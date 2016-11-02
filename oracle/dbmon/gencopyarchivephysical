@@ -1,0 +1,70 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: gencopyarchive std_machine std_sid sequence#
+#
+#  By Adi Zohar - dec 2007
+#*****************************************************************************
+
+prog=$0
+
+if [ $# -lt 3 ]
+then
+    echo "\nUsage  : ${prog} STD_MACHINE STD_SID SEQUENCE [TO_SEQ]" 
+    echo "Example: ${prog} supr26 RPTPR2 1465 " 
+    echo "Example: ${prog} supr26 RPTPR2 1465 1470" 
+    exit 2
+fi
+
+STD_MACHINE=$1
+STD_SID=$2
+SEQUENCE=$3
+typeset -u SEQ_TO=`echo $4|cut -d. -f1`
+if [ -z "$SEQ_TO" ]
+then
+  SEQ_TO=$SEQUENCE
+fi
+
+#---------------------------------------------
+# get DB and Inst parameters
+#---------------------------------------------
+echo "set echo off pages 0 feed off trimsp on lines 199
+        select d.name, a.instance_name, a.host_name, b.instance_name, b.host_name from 
+        gv\$instance a,gv\$instance b, v\$database d
+        where a.instance_number=1 and b.instance_number=2;
+" | sqlplus -s / | read DB_NAME ORA_SID1 ORA_HOST1 ORA_SID2 ORA_HOST2
+
+echo "Local Instances: $DB_NAME $ORA_SID1 $ORA_HOST1 $ORA_SID2 $ORA_HOST2 \n"
+
+echo "set echo off pages 0 feed off trimsp on lines 199
+      col name for a90
+      col name2 for a90
+      spool adi
+      select name, replace(replace(replace(replace(name,'$ORA_SID1','$STD_SID') ,'$ORA_SID2','$STD_SID'),'$DB_NAME','$STD_SID'),'/arc/','/stdby_arc/') name2
+      from v\$archived_log where sequence# between $SEQUENCE and $SEQ_TO and rtrim(name)<>'$STD_SID';
+" | sqlplus -s / | while read LOG_FILE DEST_FILE 
+do
+        ll ${LOG_FILE}.gz | wc -l |read check_log
+        if (( $check_log == 1 ))
+        then
+                gunzip -q ${LOG_FILE}.gz
+        fi
+
+        ll ${LOG_FILE} | wc -l |read check_log
+        if (( $check_log == 1 ))
+        then
+                echo " $LOG_FILE --\> $DEST_FILE "
+                scp $LOG_FILE $STD_MACHINE:$DEST_FILE
+                
+                sqlplus -s "sys@${STD_SID} as sysdba" <<EOF 
+                ALTER DATABASE REGISTER LOGFILE '$DEST_FILE';
+EOF
+        else
+                 echo " Skip $LOG_FILE "
+        fi
+done
+
+wait 
+

@@ -1,0 +1,60 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: showcontext index_name
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "Index must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set verify off line 199 feed off pages 300
+col idx_owner for a20 
+col idx_table for a20
+col idx_name for a25
+col idx_key_name for a30
+col idx_status for a10
+col idx_sync_interval for a20
+select 
+    c.idx_owner,
+    c.idx_table,
+    c.idx_name,
+    c.idx_key_name,
+    c.idx_status,
+    c.idx_sync_interval
+from
+    ctxsys.CTX_INDEXES C
+where 
+    c.idx_owner<>'CTXSYS' and
+    c.idx_name like '$NAME';
+
+col ixv_class for a16
+col ixv_object for a20
+col ixv_object for a20
+col ixv_attribute for a20
+col ixv_value for a60
+select 
+    c.idx_name,
+    ixv.ixv_class,
+    ixv.ixv_object,
+    ixv.ixv_attribute,
+    ixv.ixv_value
+from
+    ctxsys.CTX_INDEXES C,
+    ctxsys.CTX_INDEX_VALUES ixv
+where 
+    c.idx_name=ixv.ixv_index_name and
+    c.idx_owner=ixv.ixv_index_owner and
+    c.idx_owner<>'CTXSYS' and
+    c.idx_name like '$NAME'
+    order by 1,2,3;
+
+EOF
+

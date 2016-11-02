@@ -1,0 +1,240 @@
+#!/usr/bin/ksh 
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/dba/showdmlcnt 
+#  AUTHOR          : George Wang , Modified by Adi Zohar
+#
+#  This script is used to show sql run time status
+#
+#*****************************************************************************
+# Table need to be created
+#CREATE TABLE OPS$ORACLE.STAT_DML_COUNT
+#(
+#  SNAP_TM            DATE,
+#  TABLE_OWNER        VARCHAR2(30 BYTE),
+#  TABLE_NAME         VARCHAR2(30 BYTE),
+#  PARTITION_NAME     VARCHAR2(30 BYTE),
+#  SUBPARTITION_NAME  VARCHAR2(30 BYTE),
+#  INSERTS            NUMBER,
+#  UPDATES            NUMBER,
+#  DELETES            NUMBER,
+#  TIMESTAMP          DATE,
+#  TRUNCATED          VARCHAR2(3 BYTE),
+#  DROP_SEGMENTS      NUMBER
+#) TABLESPACE POOL_DATA;
+#CREATE INDEX OPS$ORACLE.STAT_DML_COUNT_IX ON OPS$ORACLE.STAT_DML_COUNT (SNAP_TM, TABLE_NAME, TABLE_OWNER) TABLESPACE POOL_DATA;
+
+# crontab must be run every one hour
+# 00 * * * * /oravl01/oracle/dba/util/gather_dml_stats.sh IAMPR41 > /oravl01/oracle/dba/LOGS/gather_dml_stats.log 2>&1
+###################################
+# Top                   
+###################################
+Top()
+{
+
+echo "Days back - $DAY"
+echo "  set feed off ver off pages 1000 line 199 trimsp on
+col table_owner for a16
+col table_name for a30
+col INSERTS for 999,999,999
+col UPDATES for 999,999,999
+col DELETES for 999,999,999
+col TOTAL for 999,999,999
+select * from
+(select 
+       t2.table_owner,
+       t2.TABLE_NAME,
+       t2.INSERTS - t1.INSERTS INSERTS,
+       t2.UPDATES - t1.UPDATES UPDATES,
+       t2.Deletes - t1.Deletes DELETES,
+       t2.tt - t1.tt TOTAL
+from       
+(
+    select  TABLE_OWNER, TABLE_NAME, sum(INSERTS) INSERTS, sum(UPDATES) UPDATES, sum(DELETES) DELETES, sum(INSERTS+UPDATES+DELETES) TT
+    from STAT_DML_COUNT
+    where SNAP_TM > sysdate - $DAY -1
+    and snap_tm = (select min(snap_tm) from STAT_DML_COUNT where SNAP_TM > SYSDATE - $DAY -1)
+    group by TABLE_OWNER, TABLE_NAME
+) t1, 
+(
+    select  TABLE_OWNER, TABLE_NAME, sum(INSERTS) INSERTS, sum(UPDATES) UPDATES, sum(DELETES) DELETES, sum(INSERTS+UPDATES+DELETES) TT
+    from STAT_DML_COUNT
+    where SNAP_TM > sysdate - $DAY -1
+    and snap_tm = (select max(snap_tm) from STAT_DML_COUNT where SNAP_TM > SYSDATE - $DAY -1    )
+    group by TABLE_OWNER, TABLE_NAME
+) t2 
+where
+    t1.table_name=t2.table_name and
+    t1.table_owner=t2.table_owner and 
+    t2.tt - t1.tt> 0 
+order by $SORT desc
+) where rownum<35 ;     
+ " | sqlplus -s / 
+    
+}
+
+###################################
+# Query by Tables
+###################################
+TableDay()
+{
+
+echo "  set feed off ver off pages 1000 line 199 trimsp on
+col table_owner for a16
+col table_name for a30
+col INSERTS for 999,999,999
+col UPDATES for 999,999,999
+col DELETES for 999,999,999
+col TOTAL for 999,999,999
+
+select t2.table_owner,
+       t2.TABLE_NAME,
+       substr(t2.snap_tm,1,10) snap_tm, 
+       sum(t2.INSERTS - t1.INSERTS) INSERTS,
+       sum(t2.UPDATES - t1.UPDATES) UPDATES,
+       sum(t2.Deletes - t1.Deletes) Deletes,
+       sum(t2.tt - t1.tt) TOTAL
+from 
+    (
+    select rownum rid, table_owner, TABLE_NAME,snap_tm,INSERTS,UPDATES,Deletes,TT 
+    from (
+    select  table_owner, TABLE_NAME, to_char(SNAP_TM, 'yyyy-mm-dd hh24:mi') snap_tm,
+           sum(INSERTS) INSERTS,
+           sum(UPDATES) UPDATES,
+           SUM(DELETES) Deletes, 
+           (sum(INSERTS) +sum(UPDATES) +SUM(DELETES) ) TT 
+    from STAT_DML_COUNT 
+    where table_name in UPPER('$TABLE') and SNAP_TM > sysdate - $DAYS 
+    group by table_owner, TABLE_NAME, to_char(SNAP_TM, 'yyyy-mm-dd hh24:mi')
+    order by table_owner, TABLE_NAME,SNAP_TM) 
+    ) t1,
+    ( 
+    select rownum rid, table_owner, TABLE_NAME,snap_tm,INSERTS,UPDATES,Deletes,TT 
+    from (
+    select  table_owner, TABLE_NAME, to_char(SNAP_TM, 'yyyy-mm-dd hh24:mi') snap_tm,
+           sum(INSERTS) INSERTS,
+           sum(UPDATES) UPDATES,
+           SUM(DELETES) Deletes, 
+           (sum(INSERTS) +sum(UPDATES) +SUM(DELETES) ) TT 
+    from STAT_DML_COUNT
+    where table_name like UPPER('$TABLE') and SNAP_TM > sysdate - $DAYS 
+    group by table_owner, TABLE_NAME, to_char(SNAP_TM, 'yyyy-mm-dd hh24:mi')
+    order by table_owner, TABLE_NAME,SNAP_TM)  
+    )t2
+where t2.rid = t1.rid + 1
+and   t2.table_name = t1.table_name
+and   t2.table_owner = t1.table_owner
+group by t2.table_owner, t2.TABLE_NAME, substr(t2.snap_tm,1,10)
+order by t2.table_owner, t2.TABLE_NAME, 3
+;
+ " | sqlplus -s / 
+}
+
+###################################
+# Query by Tables
+###################################
+Table()
+{
+
+echo "  set feed off ver off pages 1000 line 199 trimsp on
+col table_owner for a16
+col table_name for a30
+col INSERTS for 999,999,999
+col UPDATES for 999,999,999
+col DELETES for 999,999,999
+col TOTAL for 999,999,999
+
+select t2.table_owner,
+       t2.TABLE_NAME,
+       t2.snap_tm, 
+       t2.INSERTS - t1.INSERTS INSERTS,
+       t2.UPDATES - t1.UPDATES UPDATES,
+       t2.Deletes - t1.Deletes Deletes,
+       t2.tt - t1.tt TOTAL
+from 
+    (
+    select rownum rid, table_owner, TABLE_NAME,snap_tm,INSERTS,UPDATES,Deletes,TT 
+    from (
+    select  table_owner, TABLE_NAME, to_char(SNAP_TM, 'yyyy-mm-dd hh24:mi') snap_tm,
+           sum(INSERTS) INSERTS,
+           sum(UPDATES) UPDATES,
+           SUM(DELETES) Deletes, 
+           (sum(INSERTS) +sum(UPDATES) +SUM(DELETES) ) TT 
+    from STAT_DML_COUNT 
+    where table_name in UPPER('$TABLE') and SNAP_TM > sysdate - $DAYS 
+    group by table_owner, TABLE_NAME, to_char(SNAP_TM, 'yyyy-mm-dd hh24:mi')
+    order by table_owner, TABLE_NAME,SNAP_TM) 
+    ) t1,
+    ( 
+    select rownum rid, table_owner, TABLE_NAME,snap_tm,INSERTS,UPDATES,Deletes,TT 
+    from (
+    select  table_owner, TABLE_NAME, to_char(SNAP_TM, 'yyyy-mm-dd hh24:mi') snap_tm,
+           sum(INSERTS) INSERTS,
+           sum(UPDATES) UPDATES,
+           SUM(DELETES) Deletes, 
+           (sum(INSERTS) +sum(UPDATES) +SUM(DELETES) ) TT 
+    from STAT_DML_COUNT
+    where table_name like UPPER('$TABLE') and SNAP_TM > sysdate - $DAYS 
+    group by table_owner, TABLE_NAME, to_char(SNAP_TM, 'yyyy-mm-dd hh24:mi')
+    order by table_owner, TABLE_NAME,SNAP_TM)  
+    )t2
+where t2.rid = t1.rid + 1
+and   t2.table_name = t1.table_name
+and   t2.table_owner = t1.table_owner
+order by t2.table_owner, t2.TABLE_NAME, t2.snap_tm
+;
+ " | sqlplus -s / 
+}
+
+###################################
+# Usage                   
+###################################
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo "         -h                           | Help"
+ echo "         -t     [table_name] [days=1] | show dml count per table"
+ echo "         -d     [table_name] [days=1] | show dml count per table per day"
+ echo "         -top   [days back=1]         | show top dmls order by totals"
+ echo "         -topi  [days back=1]         | show top dmls order by inserts"
+ echo "         -topu  [days back=1]         | show top dmls order by updates"
+ echo "         -topd  [days back=1]         | show top dmls order by deletes"
+ echo "       }\n"
+ printf "\n"
+}
+
+#########################################################################
+# MAIN
+#########################################################################
+
+if [ $# -eq 0 ]
+then Usage
+        exit $OK
+fi
+
+typeset -u TABLE=`echo $2|cut -d. -f1`
+if [ -z "$TABLE" ]
+then
+        export TABLE="1"
+fi
+
+typeset -i DAYS=${3:-1}
+export DAYS
+export DAY=$TABLE 
+
+case $1 in
+    -t   ) Table ;;
+    -d   ) TableDay ;;
+    -top ) SORT=6; Top   ;;
+    -topi ) SORT=3; Top   ;;
+    -topu ) SORT=4; Top   ;;
+    -topd ) SORT=5; Top   ;;
+    -h   ) Usage ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR
+           ;;
+  esac
+
+

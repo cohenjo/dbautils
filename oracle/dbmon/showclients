@@ -1,0 +1,47 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all clients
+#
+#  USAGE: shwoclients
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+set verify off 
+set feedback  off 
+set pages 200 lines 132 trims on 
+column name new_value dbname noprint
+column process heading "Remote|Process"
+column sid for 9999 head SID
+column username for a15 head "User Name"
+column serial# for 99999 head Ser# 
+column machine format a30 heading "Remote|Machine"
+column osuser  heading "Remote|OS User"
+column spid    heading "Local|Shadow|Process"
+column hours format 99999.99 heading "idle|hours" 
+column last format a14 heading "Last act time"
+col global_name for a16  head Instance
+break on machine on osuser on username
+set head off
+select name from v\$database
+/
+select to_char(sysdate, 'mon-dd-yyyy hh24:mi:ss') "Time", global_name from dual,global_name
+/
+set head on
+select decode(machine,null,'PC',machine,machine) machine,
+	 osuser,  a.username,
+       a.sid,
+       process ,
+       spid   , 
+       (hsecs - value)/(100*60*60) hours
+from   v\$session a, v\$process b, v\$timer, v\$sesstat stat  
+where a.paddr =  b.addr and
+a.sid = stat.sid 
+and  stat.statistic# = (select statistic# from v\$statname
+                        where name = 'process last non-idle time')
+and a.username is not null
+order by machine, osuser, a.username,sid, a.serial#
+/
+EOF
+

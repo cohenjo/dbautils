@@ -1,0 +1,60 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+echo "###################################################"
+echo "#            CONV_DATA Objects >10Mb              #"
+echo "###################################################"
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 0 verify off line 132 feed off
+column table_name format a30
+column partitions for 999
+column owner format a30
+column mb for 999,999
+column gb for 999.9
+prompt 
+SELECT 'CONV_DATA - Allocated : '||trunc(SUM(bytes)/1024/1024/1000)||' GB' FROM dba_data_files where tablespace_name='CONV_DATA';
+SELECT 'CONV_DATA - Free      : '||trunc(SUM(bytes)/1024/1024/1000)||' GB' FROM dba_free_space where tablespace_name='CONV_DATA';
+
+set pages 1000
+
+select /* showperformance */ owner, sum(bytes)/1024/1024/1024 GB
+from dba_segments where tablespace_name='CONV_DATA' and owner like 'CNV%'
+group by owner;
+
+select /* showperformance */ owner, table_name, sum(partitions) as  partitions, sum(MB) MB
+from 
+(
+    select t.owner, t.table_name, count(*) as partitions, sum(s.bytes/1024/1024) MB 
+    from 
+        dba_segments s,
+        dba_tables t
+    where 
+        s.tablespace_name='CONV_DATA' and
+        s.segment_name=t.table_name and
+        s.owner=t.owner
+    group by t.owner, table_name
+    union all
+    select 
+        i.owner, i.table_name, count(*) as partitions, sum(s.bytes/1024/1024) MB
+    from 
+        dba_segments s,
+        dba_indexes i
+    where 
+        s.tablespace_name='CONV_DATA' and
+        s.owner=i.owner and
+        s.segment_name=i.index_name  
+    group by i.owner, table_name
+) 
+where mb>10
+group by owner, table_name
+order by 4 desc  
+;
+EOF

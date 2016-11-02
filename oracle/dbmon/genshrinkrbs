@@ -1,0 +1,44 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to shrink all rbs to 10m 
+#
+#  USAGE: genshrinkrbs
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+export TEMP_FILE=/tmp/show_shrink_$$.sql
+export TEMP_FILE_LOG=/tmp/show_shrink_log_$$.sql
+echo "set termout off trimspo on lines 199 feed off pages 0 echo off
+spool $TEMP_FILE
+select 'alter rollback segment \"'||segment_name||'\" shrink to 10m;' from dba_rollback_segs where tablespace_name <>'SYSTEM' order by 1;
+spool off
+" | sqlplus -s "/ as sysdba" 
+num_of_comp=`grep -i "shrink" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_comp objects to shrink "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_comp==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+echo "Would you like to execute ? (Y/N) \c"; read Local
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "compilation err" $TEMP_FILE_LOG | wc -l`
+	num_of_success=`grep -i "altered" $TEMP_FILE_LOG | grep -v "compilation err" | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_success objects shrinked successfully "
+	echo "$num_of_errors objects shrinked with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

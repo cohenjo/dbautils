@@ -1,0 +1,13 @@
+#!/usr/bin/ksh
+#cd $ORACLE_MON
+clear
+if [ $# -eq 0 ] ; then
+    cat showshow.doc | more
+elif [ $# -eq 1 ] ; then
+    cat showshow.doc | egrep -i "${1}|\*" | more
+else
+    echo 'Usage:            showshow <0 or 1 argument>'
+    echo 'For example:      showshow'
+    echo 'The next exapmle: showshow inst' 
+fi
+echo " "

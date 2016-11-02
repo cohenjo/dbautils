@@ -1,0 +1,95 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show parallel queries
+#
+#  USAGE: showtoplogs
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+if (( `ps -ef |grep showtoplog|grep -v grep|wc -l` > 1 ))
+then
+        echo "Cannot run more than one showtoplogs, quit"
+        exit 
+fi
+
+echo "Inserting current active session to SHOWTOPLOG table"
+
+###################################################
+# Create the temp table or truncate
+###################################################
+echo "set time on echo off
+CREATE TABLE OPS\$ORACLE.SHOWTOPLOG
+(
+  SID             NUMBER,
+  LOGICAL_READ    NUMBER,
+  PHYSICAL_READS  NUMBER,
+  LOGICAL_WRITE   NUMBER,
+  TOOK            DATE
+)
+TABLESPACE POOL_DATA;
+
+TRUNCATE TABLE OPS\$ORACLE.SHOWTOPLOG;
+" | sqlplus -s "/ as sysdba" >/dev/null
+
+###################################################
+# Insert and check
+###################################################
+echo "set echo off lines 199 trimsp on pages 1000 
+col sid for 99999
+col username for a10 trunc
+col sql_id for a15
+col log_read for 999,999,999
+col phy_read for 999,999,999
+col log_write for 999,999,999
+col program for a20 trunc
+col sql_text for a50 trunc
+
+INSERT INTO OPS\$ORACLE.SHOWTOPLOG
+select /*+ ordered use_nl(t,s,o) */
+    s.sid,
+    o.BLOCK_GETS+o.CONSISTENT_GETS as LOGICAL_READ,
+    o.PHYSICAL_READS,
+    o.BLOCK_CHANGES+o.CONSISTENT_CHANGES as LOGICAL_WRITE,
+    SYSDATE
+from 
+     v\$session s,
+     v\$sess_io o
+where
+    s.sid=o.sid and
+    s.username is not null;
+
+set feed off
+
+commit;
+
+prompt sleep 7 seconds
+!sleep 7
+
+select * from
+(
+select /*+ ordered use_nl(t,s,o) use_hash(h) */
+    s.sid,
+    s.username,
+    s.sql_id,
+    s.program,
+    (o.BLOCK_GETS+o.CONSISTENT_GETS - h.LOGICAL_READ)/((sysdate-h.took)*60*60*24) as LOG_READ,
+    (o.PHYSICAL_READS - h.PHYSICAL_READS)/((sysdate-h.took)*60*60*24) as PHY_READ,
+    (o.BLOCK_CHANGES+o.CONSISTENT_CHANGES-h.LOGICAL_WRITE)/((sysdate-h.took)*60*60*24) as LOG_WRITE,
+    t.sql_text
+from 
+     v\$session s,
+     v\$sqlarea t,
+     v\$sess_io o,
+     OPS\$ORACLE.SHOWTOPLOG h
+where
+    t.sql_id(+)=s.sql_id and
+    h.sid=s.sid and 
+    s.sid=o.sid and
+    s.username is not null 
+    order by 5 desc
+)
+where LOG_READ>2000 or PHY_READ>2000 or LOG_WRITE>2000  ;
+
+" | sqlplus -s "/ as sysdba"

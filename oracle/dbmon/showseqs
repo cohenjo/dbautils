@@ -1,0 +1,28 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show all sequences
+#
+#  USAGE: showseqs
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+sqlplus -s "/ as sysdba" <<EOF
+set pages 200 feedback off lines 132 trims on
+col sequence_owner for a20
+col sequence_name for a30
+col min_value for 99,999,999,999,999 head Min 
+col max_value for 99,999,999,999,999 head Max
+col increment_by for 99999 head Incre 
+col ORDER_FLAG for A4 head Ord 
+col cache_size for 99999 head Cache
+col CYCLE_FLAG for A4 head Cycle
+col LAST_NUMBER for 999,999,999,999 head "Last Number"
+select SEQUENCE_OWNER, SEQUENCE_NAME, MIN_VALUE, 
+        (case when MAX_VALUE > 9999999999999 then 9999999999999 else MAX_VALUE end ) as MAX_VALUE, 
+        INCREMENT_BY, CYCLE_FLAG, ORDER_FLAG, CACHE_SIZE, LAST_NUMBER
+from dba_sequences
+where sequence_owner!='SYS'
+/
+EOF

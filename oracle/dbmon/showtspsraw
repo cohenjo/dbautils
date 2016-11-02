@@ -1,0 +1,37 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all datafiles for 8i
+#
+#  USAGE: showtspsfiles tsps
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ]
+then
+  NAME=%
+fi
+
+#generate the raw device information
+echo "
+set lines 180 trimsp on pages 0 echo off feed off verify off
+
+column fl format a80
+column MB format 9,999,999
+column tablespace_name format a30 Heading Tablespace
+
+select tablespace_name, substr(file_name,1,70) As fl, bytes/1024/1024 As Mb
+from dba_data_files
+where tablespace_name like '${NAME}'
+union
+select tablespace_name, substr(file_name,1,70) As fl, bytes/1024/1024 As Mb
+from dba_temp_files
+where tablespace_name like '${NAME}'
+order by 1,2 ;
+" | sqlplus -s "/ as sysdba" |while read TSPS FILE_NAME MB
+do
+	SYM="`ls -l $FILE_NAME | sed 's/^.*> //'`"
+	echo " $TSPS \t $FILE_NAME --> $SYM (${MB}M) "
+done

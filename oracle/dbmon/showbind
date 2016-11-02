@@ -1,0 +1,41 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/bin/getsql
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Kuen-Yih Chang (kchang@amdocs.com)
+#  Add             : Adi Zohar
+#  DATE            : $Date: Wed Aug 14 12:28:25 CDT 2002 $
+#
+#  This script is used to show sql from v$sqltext
+#
+#  USAGE: getsql hash_value
+#
+#*****************************************************************************
+
+hash=$1
+until [ ! -z "$hash" ]
+do
+  echo "Enter sql_id: \c"; read hash
+done
+
+echo "
+set pages 0 feed off lines 300 trimsp on  
+prompt  
+col bind_name for a10 
+col value_string for a70 trunc
+col datatype for a16 trunc
+col last_captured for a18
+set pages 1000 trimsp on 
+
+select to_char(last_captured,'YYYY-MM-DD HH24:MI') last_captured, name as bind_name, value_string, DATATYPE_STRING datatype 
+from  v\$sql_bind_capture a
+where sql_id='$hash' and was_captured='YES' 
+union
+select distinct  to_char(last_captured,'YYYY-MM-DD HH24:MI') last_captured, name as name, value_string, DATATYPE_STRING datatype 
+from  dba_hist_sqlbind a
+where
+    sql_id='$hash' and was_captured='YES' 
+    order by 1,2;
+
+" | sqlplus -s "/ as sysdba" 

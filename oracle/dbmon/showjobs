@@ -1,0 +1,48 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all jobs
+#
+#  USAGE: showjobs
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+date
+sqlplus -s "/ as sysdba" <<EOF
+set linesize 300 pages 1000
+col SCHEMA_USER for a16
+col what for a65 trunc
+col interval for a30 trunc
+col F for 99
+select a.JOB job,SCHEMA_USER,what,LAST_DATE,LAST_SEC,NEXT_DATE,NEXT_SEC ,BROKEN,INTERVAL,FAILURES F
+from dba_jobs a
+order by 1;
+
+prompt Schedule Jobs 
+prompt =====================
+col job_action for a30 trunc
+col repeat_interval for a20 trunc
+col enabled for a3 head ENA trunc 
+col state for a5 trunc 
+col next_run_date for a18 trunc
+col owner for a12 trunc
+col job_name for a25 trunc
+col job_subname for a20 trunc
+col job_creator for a12 trunc
+col session_id for 99999
+col program_name for a18 trunc
+col SLAVE_PROCESS_ID for 99999  
+col SLAVE_OS_PROCESS_ID for a12
+col RUNNING_INSTANCE for 99 head INST
+col ELAPSED_TIME for a20
+
+select owner, job_name, job_creator, program_name, repeat_interval, enabled, state, next_run_date, job_action from  dba_scheduler_jobs
+order by NEXT_RUN_DATE;
+
+prompt Running Jobs
+prompt =====================
+select
+OWNER, JOB_NAME, JOB_SUBNAME, SESSION_ID, SLAVE_PROCESS_ID, SLAVE_OS_PROCESS_ID, RUNNING_INSTANCE, ELAPSED_TIME
+from dba_scheduler_running_jobs;
+EOF
+

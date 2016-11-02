@@ -1,0 +1,169 @@
+#!/bin/sh 
+
+######################################################################
+# Script:    showstdby
+# Author:    Adi Zohar
+#
+#######################################################################
+
+#########################################################################
+# Print script usage
+#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                | Help"
+ echo " -e                | Show Standby Events"
+ echo " -g                | Show Standby Archive Gap"
+ echo " -p                | Show Standby Progress"
+ echo " -s                | Show Standby Skipped Objects"
+ echo " -prm              | Show Standby Parameters"
+ echo "}\n"
+ printf "\n"
+}
+
+
+########################################################################
+# Parameters
+########################################################################
+Parameters()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col name for a20
+	col value for a40
+	set lines 199 pages 80 verify off feed off
+	select * from DBA_LOGSTDBY_PARAMETERS;
+EOF
+}
+
+########################################################################
+# Skipped
+########################################################################
+Skipped()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+        set pages 1000 lines 1999 feed off verify off
+        column error format a5
+        column proc  format a20
+        select * from DBA_LOGSTDBY_SKIP;
+        prompt 
+        prompt Skipped Transactions:
+        select * from DBA_LOGSTDBY_SKIP_TRANSACTION;
+EOF
+}
+
+########################################################################
+# Events
+########################################################################
+Events()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col event_time for a18
+	col status for a120
+	set lines 199 pages 80 verify off feed off
+	select to_char(event_time,'DD/MM/YYYY HH24:MI') event_time, status from DBA_LOGSTDBY_EVENTS order by event_time;
+EOF
+}
+
+########################################################################
+# Gap
+########################################################################
+Gap()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col event_time for a18
+	col status for a120
+	set lines 199 pages 80 verify off feed off
+
+	SELECT * FROM V\$ARCHIVE_GAP;
+
+EOF
+}
+
+
+########################################################################
+# Progress
+########################################################################
+Progress()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	set lines 199 pages 80 verify off feed off
+
+	col status format a20
+	col CLIENT_PID format a10
+	select process,
+		pid,
+		status,
+		client_process,
+		client_pid,
+		client_dbid
+	from V\$MANAGED_STANDBY;
+
+	select 
+		to_char(snapshot_time,'DD/MM/YYYY HH24:MI') snapshot_time, 
+		session_id,
+		thread#,
+		sequence#,
+		applied_scn, 
+		applied_time 
+	from V\$STANDBY_APPLY_SNAPSHOT;
+
+	col status for a70
+	col type for a15
+
+	select 
+		serial#,
+		logstdby_id, 
+		pid, 
+		type, 
+		status,
+		high_scn 
+	from V\$LOGSTDBY	;
+
+	col status for a70
+	select 
+		applied_scn, 
+		to_char(applied_time,'DD/MM/YYYY HH24:MI') applied_time,
+		restart_scn,
+		to_char(restart_time,'DD/MM/YYYY HH24:MI') restart_time,
+		latest_scn, 
+		to_char(latest_time,'DD/MM/YYYY HH24:MI') latest_time,
+		mining_scn, 
+		to_char(mining_time,'DD/MM/YYYY HH24:MI') mining_time
+	from V\$LOGSTDBY_PROGRESS;
+
+EOF
+}
+
+#########################################################################
+# MAIN
+#
+if [ $# -eq 0 ]
+then Usage
+	exit $OK
+fi 
+
+typeset -u USER_NAME=`echo $2|cut -d. -f1`
+if [ -z "$USER_NAME" ] 
+then
+	export USER_NAME="%"
+fi
+
+case $1 in
+    -h   ) Usage ;;
+    -e   ) Events ;;
+    -g   ) Gap ;;
+    -p   ) Progress ;;
+    -s   ) Skipped ;;
+    -prm ) Parameters ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR 
+           ;;
+  esac

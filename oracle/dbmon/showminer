@@ -1,0 +1,41 @@
+#!/bin/sh
+#*****************************************************************************
+# Script:  showminer
+# Usage:  showminer ARCHIVE_LOG TABLE_NAME
+#*****************************************************************************
+
+
+{
+        sqlplus -s "/ as sysdba" <<EOF
+        exec sys.dbms_logmnr.add_logfile('$1');
+        EXEC SYS.DBMS_LOGMNR.START_LOGMNR (Options => sys.dbms_logmnr.DICT_FROM_ONLINE_CATALOG);
+        
+set linesize 300
+column SCN format 99999999999999
+column timestamp format date
+column sql_redo format a45 wrap
+column username format a11 trunc
+column seg_owner format a11 trunc
+column seg_name format a11 trunc
+column session_info format a30 wrap
+
+        Select
+            SCN,
+            timestamp,
+            sql_redo ,
+            username,
+            seg_owner,
+            seg_name,
+            session_info,
+            audit_sessionid
+        From 
+            V\$LOGMNR_CONTENTS a 
+        where 
+            TABLE_NAME like '%$2%'
+            order by 1;
+EOF
+}
+
+
+
+

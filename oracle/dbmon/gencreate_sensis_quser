@@ -1,0 +1,68 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+typeset -u WNUMBER=`echo $1|cut -d. -f1`
+if [ -z "$WNUMBER" ]
+then
+  echo "Example: \n$0 12345 "
+  exit
+fi
+
+export NAME=SENSIS_QUSER_W${WNUMBER}  
+
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+DROP USER $NAME CASCADE;
+
+CREATE USER $NAME
+  IDENTIFIED BY $NAME
+  DEFAULT TABLESPACE SYSAUX
+  TEMPORARY TABLESPACE TEMP
+  PROFILE DEFAULT
+  ACCOUNT UNLOCK;
+
+
+  GRANT CONNECTOR_ROLE TO $NAME;
+  GRANT CTXAPP TO $NAME;
+  grant select_catalog_role to $NAME;
+  GRANT AAM_WORK_QUERY_ROLE TO $NAME;
+  GRANT ACMS_WORK_QUERY_ROLE TO $NAME;
+  GRANT ADS_WORK_QUERY_ROLE TO $NAME;
+  GRANT AFL_WORK_QUERY_ROLE TO $NAME;
+  GRANT AUTHWORK_QUERY_ROLE TO $NAME;
+  GRANT DLV_WORK_QUERY_ROLE TO $NAME;
+  GRANT PARAM_WORK_QUERY_ROLE TO $NAME;
+  GRANT PD_WORK_QUERY_ROLE TO $NAME;
+  GRANT REFREAD_QUERY_ROLE TO $NAME;
+  GRANT REFWORK_QUERY_ROLE TO $NAME;
+  GRANT REF_APPL_QUERY_ROLE TO $NAME;
+  GRANT SO_WORK_QUERY_ROLE TO $NAME;
+grant ADS_WORK_QUERY_ROLE to $NAME;
+grant BIL_WORK_QUERY_ROLE to $NAME;
+grant CGS_WORK_QUERY_ROLE to $NAME;
+grant CYP_WORK_QUERY_ROLE to $NAME;
+grant DM_WORK_QUERY_ROLE to $NAME;
+grant EPR_WORK_QUERY_ROLE to $NAME;
+grant HM_WORK_QUERY_ROLE to $NAME;
+grant NTF_WORK_QUERY_ROLE to $NAME;
+grant PDLM_WORK_QUERY_ROLE to $NAME;
+grant SP_WORK_QUERY_ROLE to $NAME;
+grant RPX_WORK_QUERY_ROLE to $NAME;
+grant MONITOR_WORK_QUERY_ROLE to $NAME;
+grant EAI_WORK_QUERY_ROLE to $NAME;
+grant IM_WORK_QUERY_ROLE to $NAME;
+
+  ALTER USER $NAME DEFAULT ROLE ALL;
+
+alter user $NAME default tablespace  pool_data;
+alter user $NAME quota 10000M on pool_data;
+
+EOF
+
+add_to_alt_user_password.sh $NAME

@@ -1,0 +1,65 @@
+#!/bin/ksh
+
+######################################################################
+# Script:    showsesstat
+# Author:    Dmitri Barkan Nov-2008
+#
+#######################################################################
+# Print script usage
+#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                | Help"
+ echo " -mem              | Show Sessions Memoty consumption"
+ echo " -io               | Show IO Performed by sessions"
+ echo " -cur              | Show Cursors Usage by sessions"
+ echo "}\n"
+ printf "\n"
+}
+
+
+########################################################################
+#  Get session statistics
+########################################################################
+
+GetStats () {
+sqlplus -s "/ as sysdba" << EOF
+col name format a35
+set line 150 pagesize 100 head off
+prompt ***************************************************
+        select instance_name ||'@' ||host_name  info from gv\$instance;
+prompt ***************************************************
+set head on
+	select * from (
+		select sid,name,value
+		from v\$statname n,v\$sesstat s
+		where n.statistic# = s.statistic#
+		and name like '$parameter'
+		order by 3 desc)
+	where rownum < 30;
+EOF
+}
+
+#########################################################################
+# MAIN
+#
+if [ $# -eq 0 ]
+then Usage
+        exit $OK
+fi
+
+typeset -u PARAM_1=`echo $2|cut -d. -f1`
+
+case $1 in
+    -h   ) Usage ;;
+    -mem ) parameter="session%memory%" ; GetStats ;;
+    -cur ) parameter="%cursors%" ; GetStats ;;
+    -io  ) parameter="%IO requests" ; GetStats ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR
+           ;;
+  esac
+

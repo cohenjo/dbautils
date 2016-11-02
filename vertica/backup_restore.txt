@@ -1,0 +1,56 @@
+
+snapshotName=fulllinksbak
+backupDir=/home/vertica/backups
+restorePointLimit = 3
+
+[Mapping0]
+dbNode = v_proj_g_node0001
+backupHost = 16.60.181.252
+backupDir = /home/vertica/backups
+[Mapping1]
+dbNode = v_proj_g_node0002
+backupHost = 16.60.181.241
+backupDir = /home/vertica/backups
+[Mapping2]
+dbNode = v_proj_g_node0003
+backupHost = 16.60.181.242
+backupDir = /home/vertica/backups
+
+
+[vertica@myd-vm01455 ~]$ cat full_links.ini
+[Misc]
+snapshotName = full_links
+verticaConfig = True
+restorePointLimit = 3
+
+[Database]
+dbName = Proj_G
+dbUser = vertica
+dbPassword = Proj_G
+
+; this should be added to create links instead of copying 
+[Transmission]
+hardLinkLocal = True
+
+[Mapping0]
+dbNode = v_proj_g_node0001
+backupHost = 16.60.181.252
+backupDir = /home/vertica/backups
+
+[Mapping1]
+dbNode = v_proj_g_node0002
+backupHost = 16.60.181.241
+backupDir = /home/vertica/backups
+
+[Mapping2]
+dbNode = v_proj_g_node0003
+backupHost = 16.60.181.242
+backupDir = /home/vertica/backups
+
+workflow
+=========
+ vbr.py --task backup --config-file maas_0_tenant.ini
+snapshot the disks
+
+for restore - mount the relevant snapshot on a side partition - copy over the file and run:
+ vbr.py --config-file maas_0_tenant.ini --task restore

@@ -1,0 +1,101 @@
+#!/bin/ksh
+
+#***********************************************************************
+#-------------
+#  Main - by Adi Zohar - 17/07/03
+#-------------
+. ~/.profile
+#----------------------------------------------------------------------#
+# Initializing Variables                                               #
+#----------------------------------------------------------------------#
+ORATAB=/etc/oratab
+
+#==============================================================================
+#check instance version 
+#==============================================================================
+for sid in `awk 'BEGIN {FS=":"} {if (($3=="Y" || $3=="N") && $1!="*")  { print $1 }} ' /etc/oratab  `
+do
+	export ORAENV_ASK=NO
+	export ORACLE_SID=$sid
+
+	. $ORACLE_HOME/bin/oraenv
+	echo "set echo off verify off pages 0
+	select substr(version,0,3) version from v\$instance;
+	" | sqlplus -s "/ as sysdba" | read DB_VERSION
+
+  if [ $DB_VERSION = "ERROR:" ]
+    then
+	    echo " $sid - is down "
+
+    else 
+    if [ $DB_VERSION = "8.0" ]
+    then
+	sqlplus -s "/ as sysdba" <<EOS
+	set echo off feed off serveroutput on lines 132 pages 0
+	declare
+		cursor details is 
+		select 
+		version.host_name host , 
+		version.instance_name db, 
+		version.version , 
+		trunc(a.bytes+f.bytes+l.bytes)||'gb' gb ,
+		trunc(sga.bytes)||'mb(sga)' sga
+		from
+		(select sum(bytes)/1024/1024/1024 bytes from dba_data_files) a,
+		(select sum(bytes)/1024/1024/1024 bytes from dba_temp_files) f,
+		(select sum(bytes)/1024/1024/1024 bytes from v$log) l,
+		(select sum(value)/1024/1024 bytes from v\$sga) sga,
+		(select instance_name,host_name,version from v\$instance) version;
+
+		cursor file_system is
+		select distinct substr(file_name,instr(file_name,'oravl')+5,instr(file_name,'/ORACLE')-instr(file_name,'oravl')-5) fs from dba_data_files
+		union  
+		select distinct substr(file_name,instr(file_name,'oravl')+5,instr(file_name,'/ORACLE')-instr(file_name,'oravl')-5) fs from dba_temp_files;
+	begin
+		for c2 in details loop
+			dbms_output.put (c2.host||'     '||c2.db||'     '||c2.version||'     '||c2.gb||'     '||c2.sga||'    FS: ');
+		end loop;
+
+		for c1 in file_system loop
+			dbms_output.put (c1.fs||',');
+		end loop;
+		dbms_output.put_line (' ');
+	end;		
+/
+EOS
+	#----------------------------------------------
+    else
+	sqlplus -s "/ as sysdba" <<EOS
+	set echo off feed off serveroutput on lines 132 pages 0
+	declare
+		cursor details is 
+		select 
+		version.host_name host , 
+		version.instance_name db, 
+		version.version , 
+		trunc(a.bytes + nvl(f.bytes,0))||'gb' gb ,
+		trunc(sga.bytes)||'mb(sga)' sga
+		from
+		(select sum(bytes)/1024/1024/1024 bytes from dba_data_files) a,
+		(select sum(bytes)/1024/1024/1024 bytes from dba_temp_files) f,
+		(select sum(value)/1024/1024 bytes from v\$sga) sga,
+		(select instance_name,host_name,version from v\$instance) version;
+
+		cursor file_system is
+		select distinct substr(file_name,instr(file_name,'oravl')+5,instr(file_name,'/ORACLE')-instr(file_name,'oravl')-5) fs from dba_data_files;
+	begin
+		for c2 in details loop
+			dbms_output.put (c2.host||'     '||c2.db||'     '||c2.version||'  '||substr('               ',1,15-length(c2.gb))||c2.gb||'  '||substr('               ',1,15-length(c2.sga))||c2.sga||'    FS: ');
+		end loop;
+
+		for c1 in file_system loop
+			dbms_output.put (c1.fs||',');
+		end loop;
+		dbms_output.put_line (' ');
+	end;	
+/
+EOS
+    fi
+    fi
+done
+

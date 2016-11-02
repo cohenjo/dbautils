@@ -1,0 +1,31 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+
+revoke ALTER ANY SEQUENCE         from cnv_download_batch;
+revoke ALTER ANY TABLE            from cnv_download_batch;
+revoke CREATE ANY DIRECTORY       from cnv_download_batch;
+revoke CREATE ANY SYNONYM         from cnv_download_batch;
+revoke CREATE SYNONYM             from cnv_download_batch;
+revoke DELETE ANY TABLE           from cnv_download_batch;
+revoke DROP ANY DIRECTORY         from cnv_download_batch;
+revoke DROP ANY SYNONYM           from cnv_download_batch;
+revoke EXECUTE ANY PROCEDURE      from cnv_download_batch;
+revoke INSERT ANY TABLE           from cnv_download_batch;
+revoke SELECT ANY SEQUENCE        from cnv_download_batch;
+revoke UNDER ANY TABLE            from cnv_download_batch;
+revoke UPDATE ANY TABLE           from cnv_download_batch;
+revoke ALTER SYSTEM               from cnv_download_batch;
+reovke execute on dbms_stats from cnv_download_batch;
+revoke resource                   from cnv_download_batch;
+revoke CONNECTOR_ROLE             from cnv_download_batch;
+
+EOF

@@ -1,0 +1,14 @@
+scp * oracle@paux02:/oravl01/oracle/dba/dbmon
+scp * oracle@paux10:/oravl01/oracle/dba/dbmon
+rcp * oracle@paux30:/oravl01/oracle/dba/dbmon
+scp * oracle@paux40:/oravl01/oracle/dba/dbmon
+scp * doracle@dvux01:/doravl01/oracle/dba/dbmon
+scp * oracle@dvux02:/oravl01/oracle/dba/dbmon
+scp * oracle@dvux03:/oravl01/oracle/dba/dbmon
+scp * doracle@dvux10:/doravl01/oracle/dba/dbmon
+scp * oracle@sysux1:/oravl01/oracle/dba/dbmon
+scp * oracle@dvux40:/oravl01/oracle/dba/dbmon
+scp * oracle@hp-rpt02:/oravl01/oracle/dba/dbmon
+scp * oracle@sutx01.sensis.com.au:/oravl01/oracle/dba/dbmon
+scp * oracle@sutx02.sensis.com.au:/oravl01/oracle/dba/dbmon
+

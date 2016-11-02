@@ -1,0 +1,18 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed off
+column grantee format a20
+column granted_role format a20
+column admin_option heading admin format a8
+select role from dba_roles order by 1
+;
+EOF

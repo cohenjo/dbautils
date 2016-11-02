@@ -1,0 +1,40 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show dir        
+#
+#  USAGE: showdir
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+set feed on 
+prompt create profile GEN_QUERY_DVT
+CREATE PROFILE GEN_QUERY_DVT LIMIT
+  SESSIONS_PER_USER DEFAULT
+  CPU_PER_SESSION 100000
+  CPU_PER_CALL DEFAULT
+  CONNECT_TIME DEFAULT
+  IDLE_TIME 30
+  LOGICAL_READS_PER_SESSION 360000
+  LOGICAL_READS_PER_CALL DEFAULT
+  COMPOSITE_LIMIT DEFAULT
+  PRIVATE_SGA DEFAULT
+  FAILED_LOGIN_ATTEMPTS DEFAULT
+  PASSWORD_LIFE_TIME DEFAULT
+  PASSWORD_REUSE_TIME DEFAULT
+  PASSWORD_REUSE_MAX DEFAULT
+  PASSWORD_LOCK_TIME DEFAULT
+  PASSWORD_GRACE_TIME DEFAULT
+  PASSWORD_VERIFY_FUNCTION DEFAULT;
+
+alter profile GEN_QUERY_DVT limit
+  IDLE_TIME 120
+  LOGICAL_READS_PER_SESSION 3600000
+  CPU_PER_SESSION 100000;
+
+prompt assign to sensis users
+alter user sensis_query_dvt profile GEN_QUERY_dvt default tablespace pool_data;
+
+EOF
+

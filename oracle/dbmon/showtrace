@@ -1,0 +1,226 @@
+#!/bin/ksh 
+
+######################################################################
+# Script:    showtrace
+# Author:    Adi Zohar
+# Date:      January 23rd 2004
+#######################################################################
+
+#########################################################################
+# Print script usage
+#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                | Help"
+ echo "                   | "
+ echo " -sn    [sid]      | Start normal trace (10046,1)"
+ echo " -sb    [sid]      | Start trace with bind variables (10046,4)"
+ echo " -sw    [sid]      | Start trace with waits (10046,8)"
+ echo " -sa    [sid]      | Start trace with waits+binds (10046,12)"
+ echo " -so    [sid]      | Start trace for optimizer plans (10053,1) "
+ echo "                   | "
+ echo " -e     [sid]      | Stop trace"
+ echo "                   | "
+ echo " -t     [sid]      | Do TKPROF for the trace file + more"
+ echo "                   | "
+ echo " -v     [sid]      | View trace file as is"
+ echo " -vs    [sid]      | View summary of waits trace"
+ echo "}\n"
+}
+
+######################################################3#######################
+# Get Session Information
+######################################################3#######################
+Get_Information()
+{
+echo "set pages 0 lines 132 trimsp on feed off
+select s.serial#,spid 
+from  v\$process p , v\$session s
+where p.addr = s.paddr and s.sid=$SID ;
+" | sqlplus -s '/ as sysdba' | read SERIAL SPID
+
+echo "set pages 0 lines 132 trimsp on feed off
+select p.value||'/'||lower(instance_name)||'_ora' 
+from 
+	 v\$parameter p,
+	 v\$instance i 
+where 
+	  p.name='user_dump_dest';
+" | sqlplus -s '/ as sysdba' | read FILE_DEST
+export SPID
+export SERIAL
+export FILE_NAME="${FILE_DEST}_${SPID}.trc"
+}
+
+######################################################3#######################
+# Print Session Information
+######################################################3#######################
+Print_Information()
+{
+sqlplus -s '/ as sysdba' <<EOF
+set pages 1000 lines 160 feed off trims on
+col username format a15
+col PROGRAM format a25 trunc
+col machine format a15 trunc
+col sid format 99999
+col username format a13
+col string format a60
+col osuser format a20
+
+set ver off
+select s.SID , s.serial#, s.USERNAME , s.PROCESS , p.spid, s.machine,  s.osuser , s.program
+from  v\$process p , v\$session s
+where p.addr = s.paddr and s.sid=$SID ;
+EOF
+}
+
+
+######################################################3#######################
+# Start trace
+######################################################3#######################
+Start_trace()
+{
+Get_Information
+Print_Information
+TRACE_EVENT=$1
+TRACE_LEVEL=$2
+
+echo ""
+echo "Start tracing session '${SID},${SERIAL}' using event ${TRACE_EVENT}, level $TRACE_LEVEL"
+echo "File: '${FILE_NAME}'"
+echo ""
+
+sqlplus -s '/ as sysdba' <<EOF
+set pages 0 lines 199 trimsp on feed off
+exec sys.dbms_system.set_ev(${SID},${SERIAL},${TRACE_EVENT},${TRACE_LEVEL},'');
+EOF
+
+}
+
+######################################################3#######################
+# Start trace
+######################################################3#######################
+Stop_trace()
+{
+Get_Information
+Print_Information
+
+echo ""
+echo "Stop tracing '${SID},${SERIAL}' using event 10046"
+echo "File: '${FILE_NAME}'"
+echo ""
+
+sqlplus -s '/ as sysdba' <<EOF
+set pages 0 lines 199 trimsp on feed off echo on
+exec sys.dbms_system.set_ev(${SID},${SERIAL},10046,0,'');
+exec sys.dbms_system.set_ev(${SID},${SERIAL},10053,0,'');
+exec sys.dbms_system.set_sql_trace_in_session(${SID},${SERIAL},false); 
+EOF
+}
+
+######################################################3#######################
+# View summary of trace
+######################################################3#######################
+View_summary_trace()
+{
+Get_Information
+Print_Information
+
+echo ""
+echo "Total Waits for file ${FILE_NAME}:"
+echo "---------------------------------------------------------------------------------------------------------"
+/usr/bin/sed -n " /^PARSING IN CURSOR #/ s/IN CURSOR #//; s/len=.* hv=//; s/ad=.*//p
+/^WAIT #/ s/^WAIT #/WAIT /; s/: nam=/ /; s/'//g; s/ela=//; s/p1=.*//p
+" $FILE_NAME | awk ' BEGIN { hv[0]="<internal>" }
+/^PARSING / { hv[$2]=$3 }
+/^WAIT / {
+  printf("%s ", hv[$2])
+  for ( i=3; i<NF; i++ ) { printf("%s_", $i ) }
+  print " "$NF
+}' | sort |
+awk '{
+  if ( c2 != $2 || c1 != $1 ) {
+    printf("%-20s %-35s %8d %12d\n", c1, c2, cnt2, sum2)
+    cnt2=0
+    sum2=0
+    c2=$2
+  }
+  if ( c1 != $1 ) {
+    printf("%-20s *********************************** %8d %12d\n", c1, cnt1, sum1)
+    cnt1=0
+    sum1=0
+    c2=$2
+    c1=$1
+    scnt = scnt + 1
+  }
+  cnt0 = cnt0 + 1
+  cnt1 = cnt1 + 1
+  cnt2 = cnt2 + 1
+  sum0 = sum0 + $3
+  sum1 = sum1 + $3
+  sum2 = sum2 + $3
+}END {
+    printf("%-20s %-35s %8d %12d\n", c1, c2, cnt2, sum2)
+    printf("%-20s *********************************** %8d %12d\n", c1, cnt1, sum1)
+  printf("---------------------------------------------------------------------------------------------------------\n")
+  printf("SQL statements: %4d %17s Total Wait Count: %8d %12d csec\n",scnt,"",cnt0,sum0)
+}'
+}
+
+#############################################################################
+# View summary of trace
+#############################################################################
+Tkrpof_trace()
+{
+Get_Information
+TKPROF_FILE=${FILE_NAME}.tkf
+
+tkprof $FILE_NAME $TKPROF_FILE sort=fchela explain=/ 
+more $TKPROF_FILE
+}
+
+#############################################################################
+# View trace file
+#############################################################################
+View_trace()
+{
+Get_Information
+more $FILE_NAME
+}
+
+#########################################################################
+# MAIN
+#
+if [ $# -eq 0 ]
+then Usage
+	exit $OK
+fi 
+
+typeset -u SID=`echo $2|cut -d. -f1`
+if [ -z "$SID" ] 
+then
+	Usage
+	exit $ERROR
+fi
+
+export SID
+
+case $1 in
+    -h   ) Usage ;;
+    -sn  ) Start_trace 10046 1;;
+    -sb  ) Start_trace 10046 4;;
+    -sw  ) Start_trace 10046 8;;
+    -sa  ) Start_trace 10046 12;;
+    -so  ) Start_trace 10053 1;;
+    -vs  ) View_summary_trace;;
+    -v   ) View_trace;;
+    -e   ) Stop_trace  ;;
+    -t   ) Tkrpof_trace  ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR 
+           ;;
+  esac
+

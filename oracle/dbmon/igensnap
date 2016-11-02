@@ -1,0 +1,116 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gensnap username
+#
+#  11/07/2011 - change by Adi  - check snapshots source only from PD_WORK and REFWORK 
+#                              - also snapshots only exists in REFREAD
+#*****************************************************************************
+
+export ONAME=`echo $1| tr -A [a-z] [A-Z]`
+export NAME=`echo $2| tr -A [a-z] [A-Z]`
+
+if [ $# -eq 0 ]
+then 
+	 echo ""
+	 echo "Usage: { `basename $0` OWNER SNAPSHOT  }"
+	 echo ""
+	 exit 
+fi 
+
+if [ ! "$ONAME" = "REFREAD" ]
+then
+	echo "iGen snapshots only exist in REFREAD, Abort"
+	exit 1
+fi
+
+TEMP_FILE=/tmp/gensnap_$$.sql
+TEMP_FILE_LOG=/tmp/gensnap_run_$$.sql
+
+######################################
+# Check if exist master table 
+######################################
+echo "set pages 0 lines 299 trimsp on echo off feed off
+select owner from dba_tables where table_name='$NAME' and owner in ('PD_WORK','REFWORK')
+; " | sqlplus -s "/ as sysdba" | wc -l | read FOUND
+
+if (( "$FOUND" == 0 )) 
+then
+	echo ""
+	echo "!!! Cannot find master to snapshot $NAME, Owner can be only PD_WORK or REFWORK, abort !!!"
+	echo ""
+	exit 1
+fi
+
+######################################
+# Create def for the snapshot
+######################################
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off verify off line 299 pages 0 echo off trimspo on
+spool $TEMP_FILE
+
+select 'DROP SNAPSHOT '||owner||'.'||name||';' from dba_snapshots where name='$NAME';
+
+select 'CREATE SNAPSHOT ${ONAME}.$NAME TABLESPACE ${ONAME}_DATA REFRESH FORCE WITH PRIMARY KEY AS SELECT * FROM '||owner||'.'||table_name||';' 
+from dba_tables
+where table_name = '$NAME' and owner in ('PD_WORK','REFWORK') and rownum = 1 ;
+
+prompt GRANT SELECT ON ${ONAME}.$NAME to ${ONAME}_QUERY_ROLE;;
+prompt EXEC DBMS_SNAPSHOT.REFRESH('${ONAME}.$NAME','C');;
+prompt EXEC DBMS_SNAPSHOT.REFRESH('${ONAME}.$NAME','?');;
+
+EOF
+
+#------------------------------
+# add the indexes
+#------------------------------
+echo "set feed off verify off line 300 pages 0 echo off trimspo on
+execute DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM,'STORAGE',false);
+execute DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM,'SEGMENT_ATTRIBUTES',false);
+select replace(to_char(DBMS_METADATA.GET_DEPENDENT_DDL('INDEX',table_name,owner)),owner,'$ONAME') 
+from dba_tables 
+where table_name='$NAME' and table_name <>'PD_AMDOCS_PUBLISH' and owner in ('REFWORK','PD_WORK');
+" | sqlplus -s / | grep INDEX |grep -v "_PK" | grep -v "SYS_IL" | while read LINE
+do
+        echo "$LINE TABLESPACE ${ONAME}_DATA;" |tee -a $TEMP_FILE
+done
+
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "create sn" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes snapshots to create "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+PARAM=`echo $4|cut -d. -f1`
+Local=$PARAM
+if [ -z "$PARAM" ]
+then
+        echo "Would you like to execute ? (Y/N) \c"; read Local
+fi
+
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | grep -v "12003" | grep -v "01432" | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors snapshots created with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

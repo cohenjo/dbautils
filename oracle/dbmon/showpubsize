@@ -1,0 +1,81 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show all pub sizes 
+#
+#  USAGE: showpubsizes
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+export mb=100
+
+echo "===================================================="
+echo "== All Publish / Subscribe tables > 100Mb         =="
+echo "===================================================="
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed off
+column owner for a30
+column table_name for a30
+column type for a15
+column partition_name for a30
+column part for a30
+column mb for 999,999,999
+
+select /*+ use_hash(s,l,lb) */
+    substr(lb.partition_name,-8) part, sum(s.bytes+ts.bytes)/1024/1024 MB
+from
+    dba_segments s,
+    dba_lobs l,
+    dba_lob_partitions lb,
+    dba_segments ts
+where
+    (l.table_name like '%AMDOCS%' or l.table_name like '%EAI_ADA%' or l.table_name like '%EAI_IAM%' or l.table_name like '%APP_MONITORING%') and
+    s.segment_name = l.segment_name   and
+    l.table_name not like '%SERVICE%' and 
+    s.owner not like 'DBI%' and
+    s.owner=l.owner and
+    s.owner=lb.table_owner (+) and
+    s.partition_name = lb.lob_partition_name (+) and lb.partition_name=ts.partition_name and lb.table_owner=ts.owner and lb.table_name=ts.segment_name
+    group by substr(lb.partition_name,-8)
+    having sum(s.bytes)/1024/1024 > 100
+    order by 1;
+
+break on report
+compute sum of MB on report
+select /*+ use_hash(s,l,lb) */ 
+    s.owner, l.table_name, lb.partition_name, s.segment_type "Type", ts.bytes/1024/1024+s.bytes/1024/1024 MB
+from
+    dba_segments s,
+    dba_lobs l,
+    dba_lob_partitions lb,
+    dba_segments ts
+where
+    (l.table_name like '%AMDOCS%' or l.table_name like '%EAI_ADA%' or l.table_name like '%EAI_IAM%' or l.table_name like '%APP_MONITORING%' ) and
+    s.segment_name = l.segment_name   and
+    s.bytes/1024/1024 > $mb and
+    s.owner not like 'DBI%' and
+    s.owner=l.owner and lb.partition_name=ts.partition_name and lb.table_owner=ts.owner and lb.table_name=ts.segment_name and
+    s.owner=lb.table_owner (+) and
+    s.partition_name = lb.lob_partition_name (+)
+    order by s.bytes desc, s.segment_name,s.partition_name;
+
+select /*+ use_hash(s,l,lb) */ 
+    s.owner, l.table_name, lb.partition_name, s.segment_type "Type", s.bytes/1024/1024 MB
+from
+    dba_segments s,
+    dba_lobs l,
+    dba_lob_partitions lb
+where
+    (l.table_name like '%JPD%'  ) and
+    s.segment_name = l.segment_name   and
+    s.bytes/1024/1024 > $mb and
+    s.owner not like 'DBI%' and
+    s.owner=l.owner and
+    s.owner=lb.table_owner (+) and
+    s.partition_name = lb.lob_partition_name (+)
+    order by s.bytes desc, s.segment_name,s.partition_name;
+
+
+EOF

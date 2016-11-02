@@ -1,0 +1,23 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+CREATE USER DIT_MONITOR_USER
+  IDENTIFIED BY DITDIT
+  DEFAULT TABLESPACE SYSAUX
+  TEMPORARY TABLESPACE TEMP
+  PROFILE DEFAULT
+  ACCOUNT UNLOCK;
+
+  GRANT CONNECT TO DIT_MONITOR_USER;
+  GRANT SELECT_CATALOG_ROLE TO DIT_MONITOR_USER;
+  ALTER USER DIT_MONITOR_USER DEFAULT ROLE ALL;
+  GRANT SELECT ANY TABLE TO DIT_MONITOR_USER;
+EOF

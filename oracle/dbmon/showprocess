@@ -1,0 +1,37 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show process information
+#
+#  USAGE: showprocess process_id
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "Process Id must be provided: \c"; read NAME
+fi
+
+if [ -z "$NAME" ] 
+then
+  exit 1
+fi
+
+
+sqlplus -s "/ as sysdba" <<EOF
+set pages 1000 lines 160 feed off trims on
+col username format a15
+col PROGRAM format a30
+col machine format a10
+col sid format 99999
+col username format a13
+col string format a60
+
+set ver off
+select s.osuser , s.PROCESS , s.SID , s.serial#, s.USERNAME , p.spid , s.program, s.machine
+from  v\$process p , v\$session s
+where p.addr = s.paddr
+and (p.SPID = $NAME or s.PROCESS='$NAME');
+EOF

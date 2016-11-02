@@ -1,0 +1,116 @@
+#!/bin/sh 
+
+######################################################################
+# Script:    showcdc	
+# Author:    Adi Zohar
+#
+#######################################################################
+
+#########################################################################
+# Print script usage
+#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                             | Help"
+ echo " -t TABLE_NAME                  | Show Flashback Queries Table"
+ echo " -c OWNER.TABLE_NAME [COLUMN]   | Show Flashback Versions for Table with column"
+ echo " -x XID                         | Show Flashback Queries for XID"
+ echo "}\n"
+ printf "\n"
+}
+
+
+########################################################################
+# PublishedColumns
+########################################################################
+FlashbackColumn()
+{
+        if [ -z "$2" ] 
+        then
+                column=""
+        else
+                column=",$2"
+        fi
+
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+        set lines 199 trimsp on pages 1000 verify off feed off
+        col versions_starttime for a20
+        col versions_endtime for a20
+        col versions_xid for a20
+        col opr for a5
+        select 
+                to_char(versions_starttime,'DD/MM/YYYY HH24:MI:SS') versions_starttime, 
+                to_char(versions_endtime,'DD/MM/YYYY HH24:MI:SS') versions_endtime, 
+                versions_xid, 
+                versions_operation opr $column
+        from ${1} versions between timestamp minvalue and maxvalue
+        order by VERSIONS_STARTTIME;
+EOF
+}
+
+########################################################################
+# PublishedColumns
+########################################################################
+FlashbackTable()
+{
+        echo "Please Wait..."
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+        set lines 199 trimsp on pages 1000 verify off feed off
+
+        col versions_starttime for a20
+        col logon_user for a15
+        col operation for a3 head OPR trunc
+        col table_owner for a15 trunc
+        col undo_sql for a100
+        
+        select 
+                xid,
+                to_char(start_timestamp,'DD/MM/YYYY HH24:MI:SS') start_timestamp,
+                logon_user,
+                operation,
+                table_owner||'.'||table_name table_owner,
+                undo_sql
+        from FLASHBACK_TRANSACTION_QUERY where table_name=upper('${1}')     ;
+
+EOF
+}
+
+########################################################################
+# XIDVersion
+########################################################################
+XIDVersion()
+{
+        echo "This query will take some time..."
+        sqlplus -s "/ as sysdba" <<EOF
+        clear buffer
+        set lines 199 trimsp on pages 1000 verify off feed off
+        col UNDO_SQL for a132
+        SELECT UNDO_SQL FROM FLASHBACK_TRANSACTION_QUERY WHERE XID = '${1}';
+EOF
+}
+#########################################################################
+# MAIN
+#
+if [ $# -lt 2 ]
+then Usage
+	exit $OK
+fi 
+
+export PARAM_1=$2
+export PARAM_2=$3
+
+case $1 in
+    -h   ) Usage ;;
+    -c   ) FlashbackColumn $PARAM_1 $PARAM_2 ;;
+    -t   ) FlashbackTable $PARAM_1  ;;
+    -x   ) XIDVersion $PARAM_1 ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR 
+           ;;
+  esac
+

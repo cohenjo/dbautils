@@ -1,0 +1,27 @@
+#!/bin/ksh 
+
+echo "set pages 70 lines 99 feedback off
+set echo on pages 60 lines 80 trims on
+col bytes_cached  for 999,999,999,999
+col bytes_used  for 999,999,999,999
+col allocated   for 999,999,999,999
+col pct_used    for 999.99
+break on report
+compute sum of bytes_cached on report
+compute sum of bytes_used on report
+compute sum of allocated on report
+select
+  b.file#,
+  a.bytes_cached,
+  a.bytes_used,
+  b.bytes allocated
+from v\$temp_extent_pool a, v\$tempfile b
+where a.file_id(+) = b.file#;
+
+select sum(a.BYTES_USED)/1024/1024 used_mb, sum(b.bytes)/1024/1024 total_mb,
+  sum(a.BYTES_USED)/sum(b.bytes)*100 pct_used
+from V\$TEMP_EXTENT_POOL a, v\$tempfile b
+where a.file_id(+) = b.file#;
+" | sqlplus -s "/ as sysdba" 
+
+

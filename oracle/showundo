@@ -1,0 +1,37 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 199 feed off
+column usr for a20 
+column UNDO_USED_MB format 999,999,999
+column sessions format 9999
+column sql_id format a15
+column sql_text format a90 trunc
+select 
+    s.username usr, 
+    sum(round(t.used_ublk*8192/1024/1024)+1) UNDO_USED_MB,
+    count(distinct s.sid) sessions, 
+    s.sql_id,  
+    SQL_TEXT sql_text
+from    
+    v\$transaction   t, 
+    v\$session       s, 
+    v\$sqlarea a
+    where  t.addr     = s.taddr and s.sql_id=a.sql_id
+    group by s.username, s.sql_id,  SQL_TEXT
+order by 2 desc,1    
+;
+
+col gb for 999.99
+col cnt for 999,999,999
+col status for a30
+SELECT DISTINCT STATUS, SUM(BYTES/1024/1024/1024) GB, COUNT(*) cnt FROM DBA_UNDO_EXTENTS GROUP BY STATUS;    
+EOF

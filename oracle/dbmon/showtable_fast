@@ -1,0 +1,228 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/dbmon/showtable
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Kuen-Yih Chang (kchang@amdocs.com) shell
+#  AUTHOR          : Adi Zohar (adizo@amdocs.com) SQL
+#  DATE            : $Date: Tue Nov  5 21:56:55 CST 2002 $
+#
+#  This script is used to describe table definitions from sys objects 
+#  very fast on large database
+#
+#  USAGE: showtable owner.table_name
+#
+#*****************************************************************************
+
+typeset -u uid=`echo $1|cut -d. -f1`
+typeset -u tab=`echo $1|cut -d. -s -f2`
+if [ -z "$uid" ] 
+then
+  echo "Table owner: \c"; read uid
+fi
+if [ -z "$tab" ]
+then
+  echo "Table name:  \c"; read tab
+fi
+
+sqlplus -s "/ as sysdba" <<-EOSQL
+set tab off trims on feedback off
+set pages 999 lines 65
+prompt ********************************************************************************************
+prompt *                                       ${uid}.$tab                                                        
+prompt ********************************************************************************************
+desc $uid.$tab
+set pages 100 lines 130
+col tablespace_name		for a22 trunc head TABLESPACE 
+col partition_name	trunc	for a22 head Partition
+col table_name		trunc	for a25
+col grant_to			for a25
+col index_name			for a25
+col column_name			for a30
+col POS				for 999
+col uniqueness			for a3 trunc
+col DEGREE			for 99 head Deg
+col INI_TRANS			for 99 head ITR
+col MAX_TRANS			for 999 head MTR 
+col PCT_FREE			for 99 head Fr
+col PCT_USED			for 99 head Us
+col p#				for 99 head "P#"
+col INITMB			for 999 head Init
+col NEXTMB			for 999 head Next
+col FREELISTS			for 99 head FLS
+col FREELIST_GROUPS		for 99 head FLG   
+col EXTENTS			for 9,999 head "Exts"
+col synony			for a66 head "Synonyms points to ${uid}.$tab "
+col Table_Size			for 999,999,999 head "${uid}.$tab Size (Mb) "
+col sizemb			for 999,999 head "Size Mb"
+col constraint_name		for a34
+col constraint_type		for a1  head T
+col status		trunc	for a3  head Sts
+col validated		trunc	for a5  head Valid
+col Reference		trunc	for a30 
+col SEARCH_CONDITION	trunc	for a30 
+
+prompt ********************************************************************************************
+prompt *                     Table Constraints, Grants and Synonyms                               *
+prompt ********************************************************************************************
+select constraint_name, constraint_type,status, validated, 
+	r_owner||decode(r_constraint_name,null,null,'.')||r_constraint_name as Reference,
+	SEARCH_CONDITION
+from 
+	 dba_constraints
+where 
+	  owner='$uid' and
+	  table_name='$tab'
+order by 1,2	  
+/
+break on grant_to nodup
+select grantee as grant_to, privilege 
+from 
+	dba_tab_privs
+where
+	owner='$uid' and
+	table_name='$tab'
+order by 1,2
+/
+select 
+	(owner||'.'||synonym_name) as synony from 
+	dba_synonyms
+where 
+	  table_owner='$uid' and
+	  table_name='$tab'
+order by 1
+/
+prompt 
+prompt ************************************************************************************************************************
+prompt *                                                    Indexes                                                           *
+prompt ************************************************************************************************************************
+break on index_name nodup on uniqueness nodup
+select 
+	ix.index_name, ix.uniqueness, ic.column_position POS, ic.column_name
+from 
+	dba_indexes ix, dba_ind_columns ic
+where
+      ix.table_name = '$tab'
+  and ix.table_owner = '$uid' 
+  and ix.table_name = ic.table_name
+  and ix.table_owner = ic.table_owner
+  and ic.index_name = ix.index_name
+order by 1, 3
+;
+set pages 999
+break on index_name nodup
+select /*+ ordered */ o.name index_name, 'Not Partitioned' partition_name, 
+	   0 as p#,
+	   to_number(decode(i.degree, 32767, 'DEFAULT', nvl(i.degree,1))) degree,
+	   i.initrans INI_TRANS, i.maxtrans MAX_TRANS,
+	   s.lists freelists, s.groups freelist_groups, 
+	   ts.name tablespace_name, s.iniexts*ts.blocksize/1024/1024 initmb, s.extsize*ts.blocksize/1024/1024 nextmb,s.extents,
+	   s.blocks*ts.blocksize/1024/1024 sizemb,
+	   i.pctfree$ PCT_FREE
+from 
+	 sys.user$ u,
+	 sys.obj$ io, 
+	 sys.ind$ i, 
+	 sys.obj$ o,
+	 sys.seg$ s,
+	 sys.ts$ ts
+where 
+	  u.name='$uid' and 
+	  io.name='$tab' and
+	  u.user# = io.owner# and
+	  u.user# = o.owner# and
+  	  o.obj# = i.obj# and
+  	  i.bo# = io.obj# and
+  	  i.file# = s.file#  and
+  	  i.block# = s.block# and
+  	  s.ts# = ts.ts#   
+union all
+select /*+ ordered */ o.name index_name, op.subname partition_name, 
+           ip.part# as p#,
+	   to_number(decode(i.degree, 32767, 'DEFAULT', nvl(i.degree,1))) degree,
+	   ip.initrans INI_TRANS, ip.maxtrans MAX_TRANS, 
+	   s.lists freelists, s.groups freelist_groups, 
+	   ts.name tablespace_name, s.iniexts*ts.blocksize/1024/1024 initmb, s.extsize*ts.blocksize/1024/1024 nextmb,s.extents,
+	   s.blocks*ts.blocksize/1024/1024 sizemb,
+	   ip.pctfree$ PCT_FREE
+from 
+	 sys.user$ u,
+	 sys.obj$ ot, 
+	 sys.ind$ i, 
+	 sys.obj$ o,
+	 sys.indpart$ ip, 
+	 sys.obj$ op,
+	 sys.seg$ s,
+	 sys.ts$ ts
+where 
+	  u.name='$uid' and 
+	  u.user# = ot.owner# and
+	  u.user# = o.owner# and
+	  ot.name='$tab' and
+  	  ot.obj# = i.bo# and
+  	  o.obj# = i.obj# and
+  	  i.obj# = ip.bo# and
+  	  op.obj# = ip.obj# and
+  	  ip.file# = s.file#  and
+  	  ip.block# = s.block# and
+  	  s.ts# = ts.ts#   
+order by 1,p#
+/
+prompt 
+prompt ************************************************************************************************************************
+prompt *                                                Table Segments                                                        *
+prompt ************************************************************************************************************************
+compute sum of sizemb on table_name
+break on table_name nodup
+select /*+ ordered use_nl(op,t) */ o.name table_name, op.subname partition_name,
+           t.part# as p#,
+	   to_number(decode(tm.degree, 32767, 'DEFAULT', nvl(tm.degree,1))) degree,
+	   t.initrans INI_TRANS, t.maxtrans MAX_TRANS, s.lists freelists, s.groups freelist_groups, 
+	   ts.name tablespace_name, s.iniexts*ts.blocksize/1024/1024 initmb, s.extsize*ts.blocksize/1024/1024 nextmb,s.extents,
+	   s.blocks*ts.blocksize/1024/1024 sizemb,
+	   t.pctfree$ PCT_FREE,t.pctused$ PCT_USED
+from 
+	 sys.user$ u,
+	 sys.obj$ o,
+	 sys.tab$ tm,
+	 sys.tabpart$ t,
+	 sys.obj$ op,
+	 sys.seg$ s,
+	 sys.ts$ ts
+where
+	 u.name='$uid' and
+	 o.name='$tab' and
+	 o.owner#=u.user# and
+	 o.obj#=tm.obj# and
+	 tm.obj#=t.bo# and 
+ 	 s.BLOCK#=t.block# and
+	 s.file#=t.file# and
+	 t.obj# = op.obj# and
+	 ts.ts#=s.ts# 
+union all
+select /*+ ordered */ o.name table_name, 'Not Partitioned' partition_name,
+           0 as p#,
+	   to_number(decode(t.degree, 32767, 'DEFAULT', nvl(t.degree,1))) degree,
+	   t.initrans INI_TRANS, t.maxtrans MAX_TRANS,s.lists freelists, s.groups freelist_groups, 
+	   ts.name tablespace_name, s.iniexts*ts.blocksize/1024/1024 initmb, s.extsize*ts.blocksize/1024/1024 nextmb,s.extents,
+	   s.blocks*ts.blocksize/1024/1024 sizemb,
+	   t.pctfree$ PCT_FREE,t.pctused$ PCT_USED
+from 
+	 sys.user$ u,
+	 sys.obj$ o,
+	 sys.tab$ t,
+	 sys.seg$ s,
+	 sys.ts$ ts
+where
+	 u.name='$uid' and
+	 o.name='$tab' and
+	 o.owner#=u.user# and
+	 o.obj#=t.obj# and
+ 	 s.BLOCK#=t.block# and
+	 s.file#=t.file# and
+	 ts.ts#=s.ts# 
+order by 1,p#;
+
+quit
+EOSQL
+

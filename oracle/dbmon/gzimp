@@ -1,0 +1,212 @@
+#!/bin/csh -f
+
+#-----------------------------------------------------------------------
+# Name        : gzimp
+#
+# Usage       : Like ORACLE imp Utility
+#
+#
+# Description : This script is running the ORACLE imp utility with gunzip
+#               the dump file .
+#		NOTE : If the dump file is not compressed import without calling
+#		       gunzip .
+#
+# History     : Name      Date      Changes
+#               --------  --------  --------------------------------------
+#               Danny L.  06/26/96  Creation
+#
+#
+#-----------------------------------------------------------------------
+
+#-----------------------------------------------------------------------
+#
+#       Search the dump file name
+#
+#-----------------------------------------------------------------------
+
+set KEY_FILE=file
+set NUMFILE=6
+set FILE=0
+foreach ARG ( $argv )
+  if ( $FILE == 0 ) then
+       echo $ARG | grep -i "^${KEY_FILE}" > /dev/null
+       if ( $status == 0 ) then
+            set FILE=1
+            set NUM=`echo $ARG | wc -c`
+            echo $ARG | grep =  > /dev/null
+            if ( $status == 0 ) then
+                 set FILE=2
+                 if ( $NUM > $NUMFILE ) then
+                      echo $ARG >! /tmp/FILE_DMP_$$
+                      set FILE_NAME=`awk 'BEGIN {FS="="} {print $2}' /tmp/FILE_DMP_$$`
+                      set FILE=3
+                 endif
+
+            endif
+        endif
+  else 
+      if ( $FILE == 1 ) then
+            echo $ARG | grep "^=" > /dev/null
+            if ( $status == 0 ) then
+                 set FILE=2
+                 set NUM=`echo $ARG | wc -c`
+                 if ( $NUM > 2 ) then
+                      echo $ARG >! /tmp/FILE_DMP_$$
+                      set FILE_NAME=`awk 'BEGIN {FS="="} {print $2}' /tmp/FILE_DMP_$$`
+                      set FILE=3
+                 endif
+             else
+                 exit(1)
+             endif
+        else
+            if ( $FILE == 2 ) then
+                 set FILE=3
+                 set FILE_NAME=$ARG
+            endif
+        endif
+  endif
+end
+if ( $FILE == 0 ) then
+     set FILE_NAME=expdat.dmp
+endif
+
+#-----------------------------------------------------------------------
+#
+#       Search the par file if "file=" dosesn't exist in line mode
+#
+#-----------------------------------------------------------------------
+
+if ( $FILE != 3 ) then
+     set KEY_FILE=parfile
+     set NUMFILE=9
+set FILE=0
+foreach ARG ( $argv )
+  if ( $FILE == 0 ) then
+       echo $ARG | grep -i "^${KEY_FILE}" > /dev/null
+       if ( $status == 0 ) then
+            set FILE=1
+            set NUM=`echo $ARG | wc -c`
+            echo $ARG | grep =  > /dev/null
+            if ( $status == 0 ) then
+                 set FILE=2
+                 if ( $NUM > $NUMFILE ) then
+                      echo $ARG >! /tmp/FILE_DMP_$$
+                      set FILE_NAME=`awk 'BEGIN {FS="="} {print $2}' /tmp/FILE_DMP_$$`
+                      set FILE=3
+                 endif
+
+            endif
+        endif
+  else
+       if ( $FILE == 1 ) then
+            echo $ARG | grep "^=" > /dev/null
+            if ( $status == 0 ) then
+                 set FILE=2
+                 set NUM=`echo $ARG | wc -c`
+                 if ( $NUM > 2 ) then
+                      echo $ARG >! /tmp/FILE_DMP_$$
+                      set FILE_NAME=`awk 'BEGIN {FS="="} {print $2}' /tmp/FILE_DMP_$$`
+                      set FILE=3
+                 endif
+             else
+                 exit(1)
+             endif
+        else
+            if ( $FILE == 2 ) then
+                 set FILE=3
+                 set FILE_NAME=$ARG
+            endif
+        endif
+  endif
+end
+if ( $FILE == 0 ) then
+     set FILE_NAME=expdat.dmp
+endif
+
+
+#-----------------------------------------------------------------------
+#
+#       Search the file name in the parfile
+#
+#-----------------------------------------------------------------------
+
+    if ( $FILE == 3 ) then
+          set KEY_FILE=file
+          set NUMFILE=6
+          if ( ! -f $FILE_NAME ) then
+               echo "Error : can't open parfile $FILE_NAME."
+               set FILE=-1
+               exit(1)
+          endif
+          set ARG_FILE=`cat $FILE_NAME`
+set FILE=0
+foreach ARG ( $ARG_FILE )
+  if ( $FILE == 0 ) then
+       echo $ARG | grep -i "^${KEY_FILE}" > /dev/null
+       if ( $status == 0 ) then
+            set FILE=1
+            set NUM=`echo $ARG | wc -c`
+            echo $ARG | grep =  > /dev/null
+            if ( $status == 0 ) then
+                 set FILE=2
+                 if ( $NUM > $NUMFILE ) then
+                      echo $ARG >! /tmp/FILE_DMP_$$
+                      set FILE_NAME=`awk 'BEGIN {FS="="} {print $2}' /tmp/FILE_DMP_$$`
+                      set FILE=3
+                 endif
+
+            endif
+        endif
+  else 
+      if ( $FILE == 1 ) then
+            echo $ARG | grep "^=" > /dev/null
+            if ( $status == 0 ) then
+                 set FILE=2
+                 set NUM=`echo $ARG | wc -c`
+                 if ( $NUM > 2 ) then
+                      echo $ARG >! /tmp/FILE_DMP_$$
+                      set FILE_NAME=`awk 'BEGIN {FS="="} {print $2}' /tmp/FILE_DMP_$$`
+                      set FILE=3
+                 endif
+             else
+                 exit(1)
+             endif
+        else
+            if ( $FILE == 2 ) then
+                 set FILE=3
+                 set FILE_NAME=$ARG
+            endif
+        endif
+  endif
+end
+if ( $FILE == 0 ) then
+     set FILE_NAME=expdat.dmp
+endif
+          if ( $FILE != 3 ) then
+               set FILE=expdat.dmp
+          endif
+     else
+          set FILE=expdat.dmp
+     endif
+endif
+if  ( $FILE == -1 ) then
+      exit(1)
+endif
+
+#-----------------------------------------------------------------------
+#
+#       Run the imp with pipe creation and gzip execute
+#
+#-----------------------------------------------------------------------
+
+rm -f /tmp/FILE_DMP_$$
+if ( ! -e ${FILE_NAME}.gz ) then
+     imp $argv
+else
+     rm -f $FILE_NAME
+     /etc/mknod $FILE_NAME p
+     /usr/local/bin/gunzip < ${FILE_NAME}.gz > $FILE_NAME &
+     sleep 1
+     imp $argv
+     rm -f $FILE_NAME
+endif

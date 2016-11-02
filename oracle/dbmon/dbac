@@ -1,0 +1,83 @@
+#!/bin/ksh
+
+if [ "`whoami`" = "isr_adba" ]
+then
+        ############################################################
+        # get user, sid from prompt
+        ############################################################
+        typeset -u SID=`echo $1|cut -d. -f1`
+        if [ -z "$SID" ]
+        then
+                echo "SID must be provided: \c"; read SID
+        fi
+        
+        typeset -u USER=`echo $2|cut -d. -f1`
+        if [ -z "$USER" ]
+        then
+                echo "USER must be provided: \c"; read USER
+        fi
+
+        SQL=$3
+
+        export SID
+        export USER
+        export SQL
+
+        ############################################################
+        # get password
+        ############################################################
+        PASSWORD_FILE=$HOME/.DBPasswords/cc_passwords_file_${SID}
+        if [ -r $PASSWORD_FILE ]
+        then
+                USER_PASS=` grep "^${USER}:" $PASSWORD_FILE | awk -F: ' {print $2} '`
+        else
+                echo "Password file not exist $PASSWORD_FILE"
+                exit 1
+        fi
+        
+        if [[ -z $USER_PASS ]]
+        then
+                echo "Password not found in $PASSWORD_FILE"
+                exit 1
+        fi
+
+else
+        ############################################################
+        # If oracle        
+        ############################################################
+        typeset -u USER=`echo $1|cut -d. -f1`
+        if [ -z "$USER" ]
+        then
+                echo "USER must be provided: \c"; read USER
+        fi
+        export SID=$ORACLE_SID
+        export USER
+
+        PASSWORD_FILE=/oravl01/oracle/adm/${ORACLE_SID}/create/accts/alt_user_password.sql
+
+        if [ -r $PASSWORD_FILE ]
+        then
+                USER_PASS=`cat $PASSWORD_FILE | awk '{ print $3 ":" $6 }' | sed 's/;//g' | grep "^${USER}:" | awk -F: '{ print $2 }'`
+        else
+                echo "Password file not exist $PASSWORD_FILE"
+                exit 1
+        fi
+
+        if [[ -z $USER_PASS ]]
+        then
+                echo "Password not found in $PASSWORD_FILE"
+                exit 1
+        fi
+
+        SQL=$2
+        export SQL
+        
+fi
+if [[ -z $SQL ]]
+then
+        DBACSQL=$ORACLE_MON/dbac.sql
+        sqlplus $USER/$USER_PASS@$SID @$DBACSQL $SQL
+else
+        sqlplus $USER/$USER_PASS@$SID @$SQL
+fi
+

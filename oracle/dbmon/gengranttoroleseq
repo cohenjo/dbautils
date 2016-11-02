@@ -1,0 +1,74 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to grant privs to role 
+#
+#  USAGE: gengranttoroleseq owner privs role
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u OWNER=`echo $1|cut -d. -f1`
+typeset -u PRIVS=`echo $2|cut -d. -f1`
+typeset -u ROLE=`echo $3|cut -d. -f1`
+if [ -z "$OWNER" ] 
+then
+  echo "Owner must be provided: \c"; read OWNER
+fi
+
+if [ -z "$PRIVS" ] 
+then
+  echo "PRIVS must be provided: (like select,update...) \c"; read PRIVS
+fi
+
+if [ -z "$ROLE" ] 
+then
+  echo "ROLE must be provided: \c"; read ROLE
+fi
+
+TEMP_FILE=/tmp/gengranttorole_$$.sql
+TEMP_FILE_LOG=/tmp/gengranttorole_run_$$.sql
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+select 'grant $PRIVS on '||SEQUENCE_NAME||' to $ROLE ;' from dba_sequences where sequence_owner='$OWNER';
+spool off
+EOF
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "grant" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes tables to grant "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+typeset -u PARAM=`echo $4|cut -d. -f1`
+Local=$PARAM
+if [ -z "$PARAM" ]
+then
+	echo "Would you like to execute ? (Y/N) \c"; read Local
+fi
+	
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$AUTO_CONN $OWNER
+	set echo on
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors tables grants with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

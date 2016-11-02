@@ -1,0 +1,23 @@
+select schema_name,table_name,load_duration_ms,accepted_row_count,rejected_row_count from LOAD_STREAMS where accepted_row_count+rejected_row_count>0;
+
+SELECT event_timestamp, statement_id, error_level, message FROM error_messages;
+
+SELECT node_name, pool_name, reason, resource_type, rejection_count AS count, 
+   last_rejected_timestamp AS time, last_rejected_value AS value
+FROM resource_rejections;
+
+
+ALTER RESOURCE POOL WOSDATA MAXMEMORYSIZE '4G';
+select * from wos_container_storage;
+
+
+SELECT * FROM V_CATALOG.RESOURCE_POOLS;
+
+
+SELECT name, memorysize, maxmemorysize, priority, runtimepriority, 
+        runtimeprioritythreshold, runtimecap, maxconcurrency 
+FROM V_CATALOG.RESOURCE_POOLS;
+
+
+SELECT pool_name, memory_size_kb, memory_size_actual_kb, memory_inuse_kb, general_memory_borrowed_kb, running_query_count 
+FROM V_MONITOR.RESOURCE_POOL_STATUS where pool_name='tm';-- where node_name ilike '%node0001';

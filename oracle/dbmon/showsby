@@ -1,0 +1,575 @@
+#!/bin/ksh 
+
+######################################################################
+# Script:    showstdby
+# Author:    Adi Zohar
+#
+#######################################################################
+# Print script usage
+#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                   | Help"
+ echo " -e                   | Show Standby Events"
+ echo " -el                  | Show Standby Events for last hour"
+ echo " -eld                 | Show Standby Events for last day"
+ echo " -etruncate           | Truncate Event Log  "
+ echo " -elast               | Show Standby Last Event"
+ echo " -elastp              | Show Standby Last Event and Apply"
+ echo " -g                   | Show Standby Archive Gap"
+ echo " -p                   | Show Standby Progress"
+ echo " -s                   | Show Standby Skipped Objects"
+ echo " -a                   | Show Standby Archive Applied "
+ echo " -t                   | Show Progress and Skip in loop"
+ echo " -instantiate [OWNER] [TABLE] | Instantiate Table"
+ echo ""
+ echo " -stopGuard           | Stop  Guard"
+ echo " -startGuard          | Start Guard"
+ echo ""
+ echo " -stats               | Statistics "
+ echo ""
+ echo " -stop                | Stop  Logical Standby"
+ echo " -start               | Start Logical Standby"
+ echo ""
+ echo " -prm                 | Show Standby Parameters"
+ echo " -slaves num          | change servers to num"
+ echo " -sga mem_mb          | change sga allocation to mem_mb"
+ echo "}\n"
+ printf "\n"
+}
+
+
+########################################################################
+# Archives
+########################################################################
+Archives()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+        set lines 199 pages 80 verify off feed off
+        ALTER SESSION SET NLS_DATE_FORMAT  = 'DD-MON-YY HH24:MI:SS';
+	col SEQUENCE# for 9999999999999
+        col thread# for 9
+        SELECT SEQUENCE#, thread#, FIRST_TIME, APPLIED  FROM DBA_LOGSTDBY_LOG  ORDER BY FIRST_TIME;
+EOF
+}
+
+########################################################################
+# Parameters
+########################################################################
+Parameters()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col name for a30
+	col value for a40
+	set lines 199 pages 80 verify off feed off
+	select * from DBA_LOGSTDBY_PARAMETERS order by 1;
+EOF
+}
+
+########################################################################
+# Stats
+########################################################################
+Stats()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+        set pages 1000 lines 1999 feed off verify off
+        ALTER SESSION SET NLS_DATE_FORMAT='dd-mm-yyyy hh24:mi:ss';
+        SELECT SUBSTR(name, 1, 40) AS NAME, SUBSTR(value,1,32) AS VALUE FROM V\$LOGSTDBY_STATS order by 1;
+EOF
+}
+
+########################################################################
+# Skipped
+########################################################################
+Skipped()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+        set pages 1000 lines 1999 feed off verify off
+        column error format a5
+        column proc  format a20
+        select error,statement_opt, owner, '*'||name||'*' name, use_like, esc, proc from DBA_LOGSTDBY_SKIP order by 3;
+        prompt 
+        prompt Skipped Transactions:
+        select * from DBA_LOGSTDBY_SKIP_TRANSACTION order by 1;
+EOF
+}
+
+########################################################################
+# Events
+########################################################################
+Events()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col event_time for a18
+        col event for a70 trunc
+	col status for a90 trunc
+	set lines 199 pages 80 verify off feed off
+	select to_char(event_time,'DD/MM/YYYY HH24:MI') event_time, event, status from DBA_LOGSTDBY_EVENTS order by EVENT_TIMESTAMP;
+EOF
+}
+
+########################################################################
+# Events last day
+########################################################################
+EventsLastDay()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col event_time for a18
+        col event for a70 trunc
+	col status for a90 trunc
+	set lines 199 pages 80 verify off feed off
+	select to_char(event_time,'DD/MM/YYYY HH24:MI') event_time, event, status from DBA_LOGSTDBY_EVENTS 
+        where event_time>sysdate-1 order by EVENT_TIMESTAMP;
+EOF
+}
+
+########################################################################
+# Events
+########################################################################
+EventsLasthours()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col event_time for a18
+        col event for a70 trunc
+	col status for a90 trunc
+	set lines 199 pages 80 verify off feed off
+	select to_char(event_time,'DD/MM/YYYY HH24:MI') event_time, event, status from DBA_LOGSTDBY_EVENTS 
+        where event_time>sysdate-1/24 order by EVENT_TIMESTAMP;
+EOF
+}
+
+########################################################################
+# Events
+########################################################################
+ApplyLastEvent()
+{
+        tmp_file=/tmp/apply_$$.sql
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col event_time for a18
+        col event for a80
+	col status for a120
+	set lines 199 pages 80 verify off feed off
+	select event, xidusn,xidslt,xidsqn, to_char(event_time,'DD/MM/YYYY HH24:MI') event_time 
+        from DBA_LOGSTDBY_EVENTS 
+        where event_time=(select max(event_time) from DBA_LOGSTDBY_EVENTS)
+        order by EVENT_TIMESTAMP;
+
+        prompt -------------------------------------------------------------------------------------------------------------------------------------
+
+        prompt To skip the event use:
+        spool $tmp_file
+        prompt ALTER DATABASE STOP LOGICAL STANDBY APPLY;;
+        set pages 0
+        col a format a100
+        select 'EXEC DBMS_LOGSTDBY.SKIP_TRANSACTION('||xidusn||','||xidslt||','||xidsqn||');' a
+        from DBA_LOGSTDBY_EVENTS 
+        where event_time=(select max(event_time) from DBA_LOGSTDBY_EVENTS)
+        order by EVENT_TIMESTAMP;
+        prompt ALTER DATABASE START LOGICAL STANDBY APPLY IMMEDIATE;;
+        spool off
+        @$tmp_file
+EOF
+        rm -f $tmp_file
+        echo ""
+}
+
+########################################################################
+# Events
+########################################################################
+LastEvent()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col event_time for a18
+        col event for a80
+	col status for a120
+	set lines 199 pages 80 verify off feed off
+	select event, xidusn,xidslt,xidsqn, to_char(event_time,'DD/MM/YYYY HH24:MI') event_time 
+        from DBA_LOGSTDBY_EVENTS 
+        where event_time=(select max(event_time) from DBA_LOGSTDBY_EVENTS)
+        order by EVENT_TIMESTAMP;
+
+        prompt -------------------------------------------------------------------------------------------------------------------------------------
+
+        prompt To skip the event use:
+        prompt ALTER DATABASE STOP LOGICAL STANDBY APPLY;;
+        set pages 0
+        col a format a100
+        select 'EXEC DBMS_LOGSTDBY.SKIP_TRANSACTION('||xidusn||','||xidslt||','||xidsqn||');' a
+        from DBA_LOGSTDBY_EVENTS 
+        where event_time=(select max(event_time) from DBA_LOGSTDBY_EVENTS)
+        order by EVENT_TIMESTAMP;
+        prompt ALTER DATABASE START LOGICAL STANDBY APPLY IMMEDIATE;;
+
+EOF
+        echo ""
+}
+
+
+########################################################################
+# Stop  Guard  Standby
+########################################################################
+StopGuard()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	ALTER SESSION DISABLE GUARD;                               
+        alter database guard none;
+EOF
+}
+
+########################################################################
+# Start Guard  Standby
+########################################################################
+StartGuard()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	ALTER SESSION ENABLE GUARD;                               
+        alter database guard all;
+EOF
+}
+
+########################################################################
+# Start Logical Standby
+########################################################################
+StartLogical()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	ALTER DATABASE START LOGICAL STANDBY APPLY IMMEDIATE;
+EOF
+}
+
+########################################################################
+# Start Logical Standby
+########################################################################
+Instantiate()
+{
+        echo "#######################################################################################"
+        echo "# Please stop the standby before running instantiate if you didn't do so              #"
+        echo "# Please make sure SYS has DBLINK to the master as the below                          #"
+        echo "#-------------------------------------------------------------------------------------#"
+        echo "# create database link MASTER_DB connect to SYSTEM identified by XXXXX using 'IAMXXX';#"
+        echo "#######################################################################################"
+	sqlplus -s "/ as sysdba" <<EOF
+        set time on timing on 
+	prompt EXECUTE DBMS_LOGSTDBY.INSTANTIATE_TABLE('$1','$2','MASTER_DB'); 
+	EXECUTE DBMS_LOGSTDBY.INSTANTIATE_TABLE('$1','$2','MASTER_DB'); 
+EOF
+}
+
+########################################################################
+# Stop Logical Standby
+########################################################################
+StopLogical()
+{
+        echo "******************************************************************************"
+        echo "* Before stopping, you must check if open transactions exists on the primary *"
+        echo "* using show8lock_no                                                         *"
+        echo "* If transaction exists, oracle need to run though !                         *"
+        echo "******************************************************************************"
+        Cont=N
+        echo ""
+        echo "Continue with Stopping ? (Y/N) \c" ; read Cont
+        if [ "$Cont" = "Y" -o "$Cont" = "y" ];
+        then
+                echo ""
+        else
+                exit 1
+        fi
+
+	sqlplus -s "/ as sysdba" <<EOF
+	ALTER DATABASE STOP LOGICAL STANDBY APPLY;
+EOF
+}
+########################################################################
+# Truncate event log 
+########################################################################
+EventsTruncate()
+{
+        export TODAY_TIME=`date +%Y%m%d_%H%M`
+        Cont=N
+        echo ""
+        echo "Continue with backup and truncating ? (Y/N) \c" ; read Cont
+        if [ "$Cont" = "Y" -o "$Cont" = "y" ];
+        then
+                echo ""
+        else
+                exit 1
+        fi
+
+	sqlplus -s "/ as sysdba" <<EOF
+        prompt backup table to SYSTEM.logstdby\$events_${TODAY_TIME}
+        create table SYSTEM.logstdby\$events_${TODAY_TIME} as select * from SYSTEM.logstdby\$events; 
+	truncate table SYSTEM.logstdby\$events;
+EOF
+}
+
+########################################################################
+# Change Max Servers - Slaves
+########################################################################
+Slaves()
+{
+        if [ -z "$1" ]
+        then
+                echo "Number of Slaves must be provided"
+                exit 1
+        fi
+
+	sqlplus -s "/ as sysdba" <<EOF
+	exec dbms_logstdby.apply_set('MAX_SERVERS',$1);
+EOF
+}
+
+########################################################################
+# Change Max SGA allocation for apply
+########################################################################
+Sga()
+{
+        if [ -z "$1" ]
+        then
+                echo "Number of Slaves must be provided"
+                exit 1
+        fi
+
+	sqlplus -s "/ as sysdba" <<EOF
+	exec dbms_logstdby.apply_set('max_sga',$1);
+EOF
+}
+
+########################################################################
+# Gap
+########################################################################
+Gap()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	col event_time for a18
+	col status for a120
+	set lines 199 pages 80 verify off feed off
+
+	SELECT * FROM V\$ARCHIVE_GAP;
+
+EOF
+}
+
+
+########################################################################
+# Skip last event and loop
+########################################################################
+SkipLastEventLoop()
+{
+export DAY=`date +%Y%m%d_%H%M%S`
+log_file=$HOME/dba/LOGS/showsby_skip_${ORACLE_SID}_$DAY.log
+
+echo "Log File = $log_file"
+while true  
+do
+        echo "set echo off verify off feed off pages 0 lines 199 trimsp on 
+        select STATE from v\$logstdby_state where state='SQL APPLY NOT ON';
+" | sqlplus -s / | grep "NOT ON" | wc -l | read APPLY
+
+        if [ $APPLY = 1 ]
+        then
+        # -----------------------------------
+        # If not apply skip and restart
+        # -----------------------------------
+                sqlplus -s / <<EOF | tee -a $log_file
+                set pages 0 lines 199 trimsp on feed off 
+                col a for a132
+                select s.state||', '||to_char(d.event_time,'DD/MM/YYYY HH24:MI') ||',"'||trim(nvl(d.event,d.status))||'"' a
+                from 
+                        DBA_LOGSTDBY_EVENTS d,
+                        v\$logstdby_state s 
+                where d.event_time=(select max(event_time) from DBA_LOGSTDBY_EVENTS)
+                order by EVENT_TIMESTAMP;
+EOF
+                tmp_file=/tmp/apply_$$.sql
+                sqlplus -s / <<EOF >>$log_file 2>>$log_file
+                set pages 0
+                col a format a100
+                spool $tmp_file
+                select 'EXEC DBMS_LOGSTDBY.SKIP_TRANSACTION('||xidusn||','||xidslt||','||xidsqn||');' a
+                from DBA_LOGSTDBY_EVENTS 
+                where xidusn is not null and event_time=(select max(event_time) from DBA_LOGSTDBY_EVENTS)
+                order by EVENT_TIMESTAMP;
+                spool off
+                @$tmp_file
+                ALTER DATABASE START LOGICAL STANDBY APPLY IMMEDIATE;
+EOF
+                rm -f $tmp_file
+
+        else
+        # -----------------------------------
+        # Check Minutes behind
+        # -----------------------------------
+                sqlplus -s / <<EOF |tee -a $log_file
+                set pages 0 lines 199 trimsp on feed off 
+                col a for a199
+                select
+                to_char(sysdate,'HH24:MI:SS') ||' $ORACLE_SID ('||rpad(STATE,8)||'),   '||
+                'Arc ('||Arc.cnt||') '||arc.arch_start ||',       '||
+                'Start: ' || to_char(restart_time,'DD/MM HH24:MI') || ',        '||
+                'Mine ('||(select count(*) cnt FROM DBA_LOGSTDBY_LOG where first_time>mining_time)||') ' || 
+                      to_char(mining_time,'DD/MM/YYYY HH24:MI:SS')  || ' -'|| to_char((sysdate-mining_time)*24*60,'9,999')|| 'm,         ' ||
+                'Apply ('||(select count(*) cnt FROM DBA_LOGSTDBY_LOG where first_time>nvl(applied_time,mining_time))||') ' ||
+                      to_char(applied_time,'DD/MM/YYYY HH24:MI:SS') || ' -'|| to_char((sysdate-nvl(applied_time,mining_time))*24*60,'9,999')|| decode(mining_time,null,'','m') a
+                from
+                        v\$logstdby_state,
+                        V\$LOGSTDBY_PROGRESS,
+                        (select to_char(min(FIRST_TIME),'DD/MM HH24:MI') ARCH_start, count(*) cnt FROM DBA_LOGSTDBY_LOG) arc;
+EOF
+        fi
+        sleep 10
+done
+}
+
+########################################################################
+# Progress
+########################################################################
+Progress()
+{
+	sqlplus -s "/ as sysdba" <<EOF
+	clear buffer
+	set lines 199 pages 80 verify off feed off
+
+	col status format a20
+	col CLIENT_PID format a10
+        col applied_scn for 999,999,999,999,999
+	select process,
+		pid,
+		status,
+		client_process,
+		client_pid,
+		client_dbid
+	from V\$MANAGED_STANDBY;
+
+	select 
+		to_char(snapshot_time,'DD/MM/YYYY HH24:MI') snapshot_time, 
+		session_id,
+		thread#,
+		sequence#,
+		applied_scn, 
+		applied_time 
+	from V\$STANDBY_APPLY_SNAPSHOT;
+
+	col status for a80
+	col type for a15
+	col high_scn for 999,999,999,999,999 head "HIGH SCN"
+	col applied_scn for a20 head "APPLIED "
+	col restart_scn for a20 head "RESTART "
+	col latest_scn for a20 head "LATEST "
+	col mining_scn for a20 head "MINING "
+	col archive_scn for a20 head "ARCHIVES "
+	col latest_time for a20
+	col applied_time for a20
+	col restart_time for a20
+	col mining_time for a20
+	col archive_time for a20
+        COL state for a30
+        COL REALTIME_APPLY for a15
+
+        select 
+                SESSION_ID,
+                REALTIME_APPLY,
+                STATE 
+        from
+        v\$logstdby_state;
+
+	select 
+		serial#,
+		logstdby_id, 
+		pid, 
+		type, 
+		status,
+                high_scn
+	from V\$LOGSTDBY	;
+
+	select 
+		to_char(latest_scn,'999,999,999,999,999') latest_scn, 
+		to_char(applied_scn,'999,999,999,999,999') applied_scn, 
+		to_char(mining_scn,'999,999,999,999,999') mining_scn,
+                to_char(restart_scn,'999,999,999,999,999') restart_scn ,
+                (select to_char(min(first_change#),'999,999,999,999,999') FROM DBA_LOGSTDBY_LOG) archive_scn  
+	from V\$LOGSTDBY_PROGRESS;
+
+        set pages 0
+        prompt  
+	col status for a70
+	select 
+		to_char(latest_time,'    DD/MM/YYYY HH24:MI') latest_time,
+		to_char(applied_time,'    DD/MM/YYYY HH24:MI') applied_time,
+		to_char(mining_time,'    DD/MM/YYYY HH24:MI') mining_time,
+		to_char(restart_time,'    DD/MM/YYYY HH24:MI') restart_time,
+                (select to_char(min(FIRST_TIME),'    DD/MM/YYYY HH24:MI') FROM DBA_LOGSTDBY_LOG) archive_time
+	from V\$LOGSTDBY_PROGRESS;
+
+        prompt  
+	select 
+                ' ' latest_time,
+		(select '    Archives: '||count(*) from DBA_LOGSTDBY_LOG where first_time>applied_time) applied_time,
+		(select '    Archives: '||count(*) from DBA_LOGSTDBY_LOG where first_time>mining_time) mining_time,
+                ' ' as restart_time,
+		(select '    Archives: '||count(*) from DBA_LOGSTDBY_LOG ) archive_time
+	from V\$LOGSTDBY_PROGRESS;
+
+        set pages 1000
+        col minutes format 99,999.9 head "Minutes Behind"
+        col MB_PAGED_OUT format 99,999.9 head "MB Paged Out"
+        select 
+            (sysdate-nvl(applied_time,mining_time))*24*60 minutes,
+            trunc(to_number(value)/1024/1024) MB_PAGED_OUT
+        from V\$LOGSTDBY_PROGRESS,
+             v\$logstdby_stats 
+        where name = 'bytes paged out';
+
+
+EOF
+}
+
+#########################################################################
+# MAIN
+#
+if [ $# -eq 0 ]
+then Usage
+	exit $OK
+fi 
+
+typeset -u PARAM_1=`echo $2|cut -d. -f1`
+typeset -u PARAM_2=`echo $3|cut -d. -f1`
+
+case $1 in
+    -h   ) Usage ;;
+    -e   ) Events ;;
+    -el  ) EventsLasthours ;;
+    -eld ) EventsLastDay ;;
+    -etruncate) EventsTruncate ;;
+    -elastp ) ApplyLastEvent ;;
+    -elast   ) LastEvent ;;
+    -g   ) Gap ;;
+    -a   ) Archives ;;
+    -p   ) Progress ;;
+    -t   ) SkipLastEventLoop ;;
+    -s   ) Skipped ;;
+    -stats   ) Stats ;;
+    -stopGuard ) StopGuard ;;
+    -startGuard ) StartGuard ;;
+    -stop) StopLogical ;;
+    -start) StartLogical ;;
+    -slaves) Slaves $PARAM_1 ;;
+    -sga) Sga $PARAM_1 ;;
+    -prm ) Parameters ;;
+    -instantiate ) Instantiate $PARAM_1 $PARAM_2 ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR 
+           ;;
+  esac

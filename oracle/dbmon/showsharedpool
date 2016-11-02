@@ -1,0 +1,89 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show largest objects in shared pool
+#
+#  Sam Yeoman 2009
+#
+#*****************************************************************************
+############################################
+# Show usage
+############################################
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                              | Help"
+ echo " -f                              | show full sql"
+ echo "       }\n"
+ printf "\n"
+}
+
+############################################
+# Normal output (with sql truncated)
+############################################
+normal()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 200
+set linesize 250
+column owner format a20
+column namespace format a20
+column total_mb format 999,999.00
+column kept format a4
+column name format a85 trunc
+select * from (
+select owner, namespace, kept, count(*), sum(sharable_mem/1024/1024) total_mb, name from v\$db_object_cache
+group by name, owner, namespace, kept, sharable_mem/1024/1024
+order by sum(sharable_mem/1024/1024) desc)
+where rownum < 30
+
+/
+EOF
+}
+
+############################################
+# Show full sql
+############################################
+show_full_sql()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 200
+set linesize 152
+column owner format a20
+column namespace format a20
+column total_mb format 999,999.00
+column kept format a4
+column name format a80 wrap
+select * from (
+select owner, namespace, kept, count(*), sum(sharable_mem/1024/1024) total_mb, name from v\$db_object_cache
+group by name, owner, namespace, kept, sharable_mem/1024/1024
+order by sum(sharable_mem/1024/1024) desc)
+where rownum < 20
+/
+EOF
+}
+
+############################################
+# Main
+############################################
+
+typeset -u USER_NAME=`echo $2|cut -d. -f1`
+if [ -z "$USER_NAME" ] 
+then
+        export USER_NAME="%"
+fi
+
+case $1 in
+    -h  ) Usage ;;
+    -f  ) show_full_sql ;;
+    ""  ) normal ;;
+     *  ) Usage ;;
+  esac
+

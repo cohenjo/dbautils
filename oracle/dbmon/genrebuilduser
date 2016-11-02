@@ -1,0 +1,61 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: genrebuilduser username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "User must be provided: \c"; read NAME
+fi
+
+TEMP_FILE=/tmp/genrebuilduser_$$.sql
+TEMP_FILE_LOG=/tmp/genrebuilduser_run_$$.sql
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+select 'alter table '||owner||'.'||table_name||' move storage (initial 256k next 256k);' from dba_tables where owner='$NAME';
+select 'alter index '||owner||'.'||index_name||' rebuild storage (initial 256k next 256k);' from dba_indexes where owner='$NAME';
+spool off
+EOF
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "alter" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes objects to truncate "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+typeset -u PARAM=`echo $2|cut -d. -f1`
+Local=$PARAM
+if [ -z "$PARAM" ]
+then
+	echo "Would you like to execute ? (Y/N) \c"; read Local
+fi
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors objects truncated with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

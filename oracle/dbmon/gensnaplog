@@ -1,0 +1,87 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gensnap username
+#
+#  By Barbara R.
+#*****************************************************************************
+
+typeset -u ONAME=`echo $1|cut -d. -f1 | tr -A [a-z] [A-Z]`
+typeset -u NAME=`echo $2|cut -d. -f1  | tr -A [a-z] [A-Z]`
+if [ -z "$ONAME" ] 
+then
+  echo "Owner Snapshot Log to be created must be provided: \c"; read NAME
+fi
+if [ -z "$NAME" ] 
+then
+  echo "Snapshot Log to be created must be provided: \c"; read NAME
+fi
+
+
+TEMP_FILE=/tmp/gensnaplog_$$.sql
+TEMP_FILE_LOG=/tmp/gensnaplog_run_$$.sql
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+PROMPT
+PROMPT 
+select distinct 'drop snapshot log on ${ONAME}.'||MASTER||';' from dba_snapshot_logs where log_owner='$ONAME' and master='$NAME';
+select 'create snapshot log on $ONAME.$NAME TABLESPACE '||decode('${ONAME}','PD_WORK','PD','${ONAME}')||'_DATA ;' from dual;
+select '-- grants will created after the Y' from dual;
+EOF
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "create sna" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes snapshots log to create "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+typeset -u PARAM=`echo $3|cut -d. -f1`
+Local=$PARAM
+if [ -z "$PARAM" ]
+then
+	echo "Would you like to execute ? (Y/N) \c"; read Local
+fi
+
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus -s "/ as sysdba" 
+
+echo "set feed off verify off line 132 pages 0 echo off trimspo on
+select LOG_TABLE from dba_snapshot_logs where log_owner='${ONAME}' and master='${NAME}';
+" | sqlplus -s / | read SNAPLOG
+
+        sqlplus -s / <<EOF
+        spool $TEMP_FILE_LOG append
+        set pages 0 lines 132 trimsp on echo on 
+        prompt grant select,update,delete,insert on $ONAME.$SNAPLOG to ${ONAME}_UPDATOR_ROLE;
+        grant select,update,delete,insert on $ONAME.$SNAPLOG to ${ONAME}_UPDATOR_ROLE;
+        prompt grant select on $ONAME.$SNAPLOG to ${ONAME}_QUERY_ROLE;
+        grant select on $ONAME.$SNAPLOG to ${ONAME}_QUERY_ROLE;
+        prompt grant flashback, select on $ONAME.$SNAPLOG to REFREAD;
+        grant flashback, select on $ONAME.$SNAPLOG to REFREAD;
+        spool off
+EOF
+
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | grep -v "12003" | grep -v "01432" | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors snapshots log created with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

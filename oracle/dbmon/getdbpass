@@ -1,0 +1,23 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: getdbpass sid username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u SID=`echo $1|cut -d. -f1`
+if [ -z "$SID" ]
+then
+  echo "SID must be provided: \c"; read SID
+fi
+
+typeset -u USERNAME=`echo $2|cut -d. -f1`
+if [ -z "$USERNAME" ]
+then
+  echo "USERNAME must be provided: \c"; read USERNAME
+fi
+  
+grep "$USERNAME" ~/.DBPasswords/cc_passwords_file_${SID}

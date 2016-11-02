@@ -1,0 +1,20 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show dir        
+#
+#  USAGE: showdir
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set lines 150 pages 1000
+col owner format a25
+col directory_name format a40
+col directory_path format a80 
+
+select owner,directory_name,directory_path
+from dba_directories;
+EOF
+

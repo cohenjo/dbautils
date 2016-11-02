@@ -1,0 +1,47 @@
+#!/bin/ksh
+# DESCRIPTION
+# Prepare cmd file to scp datafiles from current ORACLE_SID to new DB.
+#
+#(YYYY/MM/DD)   MODIFIED
+# 2011/10/04    -       Create Vishnu Thanakanti
+# 2011/10/05    -       Some bugs fixed Alexander Sobyanin
+
+
+###########################################################
+# Check Usage.
+###########################################################
+if [ $# != 2 ]
+then
+   script_name=`basename $0` 
+   echo "\nThis script generates command file to copy all datafiles from current SID to new DB. " 1>&2
+   echo "       Usage: $script_name new_db new_fs > cmdfile" 1>&2
+   echo "       Ex: $script_name IAMTR4 oravl08 > scp_files_IAMTR4.cmd" 1>&2
+   echo "Check output and run 'process_parall.ksh -c cmdfile -l /tmp/' to copy files\n" 1>&2
+   exit 1
+fi
+
+
+
+###########################################################
+# Variables
+###########################################################
+
+new_db=$1
+new_fs=$2
+new_host=`grep -i ^${new_db}= /etc/tnsnames.ora | head -1 | tr A-Z a-z | awk 'BEGIN{FS="host="}{print $2}' | cut -d\) -f1`
+
+if [ -z "$new_host" ] 
+then
+        echo "ERROR: Target database not found in /etc/tnsnames.ora !\n" 1>&2
+        exit 1
+fi
+
+###########################################################
+# Run the prep  
+###########################################################
+echo "
+    set pagesize 0 linesize 199 feedback off trimsp on
+    select 'scp -c arcfour '||f.name||' $new_host:'||replace(replace (f.name,d.name,'$new_db'),substr(f.name,2,7),'$new_fs')  from v\$datafile f, v\$database d order by bytes desc;
+" | sqlplus -L -s / 
+
+

@@ -1,0 +1,32 @@
+#!/usr/bin/sh
+#----------------------------------------------------------
+# Script: runshellalldb
+# Purpose: Run SHELL command on all databases
+#----------------------------------------------------------
+# Written By: Barbara Rabinowicz
+# Date      : 13/05/2005
+#----------------------------------------------------------
+export SUF=$1
+export SHELL_SCRIPT=$2
+export ORAENV_ASK=NO
+
+if [ $# -ne 2 ]
+then
+   echo "Usage: $0 ss1/all shellscript.sh"
+   exit 2
+fi
+
+if [ "$SUF" = "all" ] 
+then
+    sidList=`awk 'BEGIN {FS=":"} {if ($3=="Y")  { print $1 }} ' /etc/oratab `
+else
+    sidList=`awk 'BEGIN {FS=":"} {if ($3=="Y")  { print $1 }} ' /etc/oratab | grep -i "$SUF" `
+fi
+
+for db in `echo $sidList`
+do
+   echo $db
+   export ORACLE_SID=$db
+   . oraenv 
+   $SHELL_SCRIPT
+done

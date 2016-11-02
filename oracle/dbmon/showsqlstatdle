@@ -1,0 +1,86 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/bin/showsqlstatdle
+#  VERSION         : $Revision: 1.0 $
+#  Author          : Adi Zohar
+#
+#  This script is used to show sql from v$sqltext
+#
+#  USAGE: showsqlstatdle - stats for DLE
+#
+#*****************************************************************************
+
+hash=$1
+until [ ! -z "$hash" ]
+do
+  echo "Enter DLE: \c"; read hash
+done
+
+days=$2
+if [ -z "$days" ]
+then
+        days=1
+fi
+
+echo "DLE = $hash for $days days"
+echo "
+set pages 1000 head on feed off lines 199 trimsp on
+col snap_id for 99999
+col begin_hour for a16
+col exec for 999,999
+col PHY_PER_EXEC for 999,999,999
+col LOG_READ_EXEC for 999,999,999
+col ROWS_PER_EXEC for 999,999,999.99
+col cpu_per_exec for 999,999.99
+col elapsed_per_exec for 999,999.99
+col IOW_PER_EXEC for 999,999,999
+col CLW_PER_EXEC for 999,999,999
+col sql_id for a13
+col SPACE for a13
+
+prompt #########################################################################################################
+prompt #                                               Per Sql_id                                              #
+prompt #########################################################################################################
+
+select 
+    snap_id,
+    to_char(begin_interval_time,'YYYY-MM-DD HH24:MI') as begin_hour,
+    sql_id,
+    executions_delta as EXEC,
+    (elapsed_time_delta /1000000 / executions_delta) as elapsed_per_exec,
+    round(disk_reads_delta/executions_delta) PHY_PER_EXEC,
+    round(buffer_gets_delta/executions_delta) LOG_READ_EXEC,
+    (rows_processed_delta/executions_delta) as ROWS_PER_EXEC,
+    (cpu_time_delta /1000000 / executions_delta) as cpu_per_exec,
+    round(iowait_delta/executions_delta) IOW_PER_EXEC,
+    round(clwait_delta/executions_delta) CLW_PER_EXEC
+from 
+        DBA_HIST_SNAPSHOT natural join dba_hist_sqlstat
+where sql_id in (select sql_id from v\$sqlarea where upper(sql_text) like upper('%${hash}%') and sql_text not like '%v\$sqlarea%')
+ and instance_number=1 and begin_interval_time>sysdate-$days and executions_delta>0
+order by 1;
+
+prompt  
+prompt #########################################################################################################
+prompt #                                               Summary                                                 #
+prompt #########################################################################################################
+select 
+    snap_id,
+    to_char(begin_interval_time,'YYYY-MM-DD HH24:MI') as begin_hour,
+    '             ' as SPACE,
+    sum(executions_delta) as EXEC,
+    (sum(elapsed_time_delta) /1000000 / sum(executions_delta)) as elapsed_per_exec,
+    round(sum(disk_reads_delta)/sum(executions_delta)) PHY_PER_EXEC,
+    round(sum(buffer_gets_delta)/sum(executions_delta)) LOG_READ_EXEC,
+    (sum(rows_processed_delta)/sum(executions_delta)) as ROWS_PER_EXEC,
+    (sum(cpu_time_delta) /1000000 / sum(executions_delta)) as cpu_per_exec,
+    round(sum(iowait_delta)/sum(executions_delta)) IOW_PER_EXEC,
+    round(sum(clwait_delta)/sum(executions_delta)) CLW_PER_EXEC
+from 
+        DBA_HIST_SNAPSHOT natural join dba_hist_sqlstat
+where sql_id in (select sql_id from v\$sqlarea where upper(sql_text) like upper('%${hash}%') and sql_text not like '%v\$sqlarea%')
+ and instance_number=1 and begin_interval_time>sysdate-$days and executions_delta>0
+ group by snap_id, to_char(begin_interval_time,'YYYY-MM-DD HH24:MI')
+order by 1;
+" | sqlplus -s "/ as sysdba"

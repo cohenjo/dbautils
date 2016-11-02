@@ -1,0 +1,60 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate disable cons for user 
+#
+#  USAGE: gen_noparallel_logging
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+TEMP_FILE=/tmp/gennoparallel_$$.sql
+TEMP_FILE_LOG=/tmp/gennoparallel_run_$$.sql
+
+sqlplus -s "/ as sysdba" >/dev/null <<EOF
+clear buffer
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+select 'alter index '||owner||'.'||index_name||' noparallel ;' from dba_indexes where trim(degree) <>'1' and degree<>'0' and owner<>'SYS' and owner<>'SYSTEM' and index_type not like 'ITO%'
+union all
+select 'alter table '||owner||'.'||table_name||' noparallel ;' from dba_tables where trim(degree) <>'1' and degree<>'0' and owner<>'SYS' and owner<>'SYSTEM' and table_name not like 'RUPD%' and temporary!='Y'
+union all
+select 'alter index '||owner||'.'||index_name||' logging ;' from dba_indexes where logging<>'YES' and owner<>'SYS' and owner<>'SYSTEM' and index_type not like 'IOT%'
+union all
+select 'alter table '||owner||'.'||table_name||' logging ;' from dba_tables where logging<>'YES' and owner<>'SYS' and owner<>'SYSTEM' and table_name not like 'RUPD%' and temporary!='Y';
+spool off
+EOF
+
+#--------------------------------------------------------------------------------------------
+
+head -n 10 $TEMP_FILE
+echo "..."
+
+num_of_changes=`grep -i "ALTER" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes changes to apply"
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+echo "Would you like to execute ? (Y/N) \c"; read Local
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+        set term off
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors changes applied with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

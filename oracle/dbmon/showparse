@@ -1,0 +1,269 @@
+#!/bin/ksh 
+
+#######################################################################
+# Sam Yeoman
+# Script: showparse
+# Description: to show sqls in library cache with high parse_calls
+#######################################################################
+
+############################################
+# Show usage
+############################################
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h				| Help"
+ echo " -f				| show full sql_text"
+ echo " -s				| show stats"
+ echo " -hs				| show current hard parse programs"
+ echo " -hp				| show current hard parse sqls from v\$session"
+ echo "       }\n"
+ printf "\n"
+}
+
+############################################
+# Normal output (with sql_text truncated)
+############################################
+normal()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+column schema format a16 trunc
+column module format a24 trunc
+column action format a24
+column sql_text format a50 trunc
+column executions format 99,999,999
+column parse_calls format 99,999,999
+alter session set "_hash_join_enabled"=true;
+
+select * from (
+SELECT 
+             k.kglobt03 sql_id,
+             k.kglobts4 schema,
+             k.kglobts0 module,
+             k.kglobts1 action,
+             k.kglnaobj sql_text,
+             k.kglobt05 executions,
+             k.kglobt12 parse_calls
+FROM
+x\$kglcursor_child_sqlid k
+where k.kglobts4 != 'SYS'
+order by parse_calls  desc)
+where rownum < 25
+/
+EOF
+}
+
+############################################
+# Full output: Show full sql_text
+############################################
+show_full()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+column schema format a16 trunc
+column module format a24 trunc
+column action format a24
+column sql_text format a50 wrap
+column executions format 99,999,999
+column parse_calls format 99,999,999
+alter session set "_hash_join_enabled"=true;
+ 
+select * from (
+SELECT 
+             k.kglobt03 sql_id,
+             k.kglobts4 schema,
+             k.kglobts0 module,
+             k.kglobts1 action,
+             k.kglnaobj sql_text,
+             k.kglobt05 executions,
+             k.kglobt12 parse_calls
+FROM
+x\$kglcursor_child_sqlid k
+where k.kglobts4 != 'SYS'
+order by parse_calls  desc)
+where rownum < 25
+/
+EOF
+}
+
+############################################
+# Parse time cpu
+############################################
+stats()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+
+SELECT NAMESPACE, PINS, PINHITS, RELOADS, INVALIDATIONS
+  FROM V\$LIBRARYCACHE
+ ORDER BY NAMESPACE
+/
+
+select (sum(pinhits) / sum(pins)) "Library Cache Hit Ratio" from V\$LIBRARYCACHE
+/
+EOF
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+column NAME format a25
+
+SELECT a.VALUE "parse count (total)",
+       b.VALUE "parse count (hard)"
+FROM v\$sysstat a, v\$sysstat b
+WHERE     a.name = 'parse count (total)'
+      AND b.name = 'parse count (hard)'
+/
+EOF
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+column NAME format a25
+
+SELECT a.VALUE "cpu_used_by_this_session",
+       b.VALUE "parse_time_cpu",
+       c.VALUE "recursive_cpu_usage"
+FROM v\$sysstat a, v\$sysstat b, v\$sysstat c
+WHERE     a.name = 'CPU used by this session'
+      AND b.name = 'parse time cpu'
+      AND c.name = 'recursive cpu usage'
+/
+EOF
+}
+
+############################################
+# Show current hard parse sqls from v$session
+############################################
+hard_parse_sql()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+
+column username format a16 trunc
+column module format a24 trunc
+column machine format a10 trunc
+column program format a15 trunc
+column osuser format a10 trunc
+column action format a24
+column sql_text format a50 trunc
+column executions format 99,999,999
+column parse_calls format 99,999,999
+
+SELECT /*+ use_hash (a,b,e,t,s,f) */ 
+       s.indx sid,
+       s.ksuudnam username,
+       s.ksusepid process,
+       s.ksuseunm osuser,
+       s.ksusemnm machine,
+       s.ksusepnm program,
+       e.kglnaobj sql_text,
+       e.kglobt05 executions,
+       e.kglobt12 parse_calls
+FROM x\$ksusesta a, x\$ksusesta b, x\$kglcursor_child_sqlid e, x\$ktsso t, x\$ksuse s, x\$ksled f
+WHERE     BITAND (s.ksspaflg, 1) != 0
+      AND BITAND (s.ksuseflg, 1) != 0
+      AND s.ksuseopc = f.indx
+      AND b.ksusestv > 0
+      AND s.indx = a.ksusenum
+      AND a.ksusenum = b.ksusenum
+      AND a.ksusestn = (SELECT indx
+                          FROM x\$ksusd
+                          WHERE ksusdnam = 'parse count (hard)')
+      AND s.ksusesqi = e.kglobt03
+      AND e.kglobt12 > 0
+      and t.inst_id=s.inst_id
+GROUP BY t.inst_id,
+         s.indx,
+         s.ksuudnam,
+         s.ksusepid,
+         s.ksuseunm,
+         s.ksusemnm,
+         s.ksusepnm,
+         e.kglnaobj,
+         e.kglobt05,
+         e.kglobt12
+ORDER BY e.kglobt05 / e.kglobt12
+/
+EOF
+}
+
+############################################
+# Show current hard parse programs
+############################################
+hard_parse_prog()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+
+column "avg_parse_%" format 99,999.00
+column "max_parse_%" format 99,999.00
+
+select * from (
+select substr(d.host_name,1,8) machine_name,
+substr(d.instance_name,1,8) instance_name,
+rpad(nvl(program,machine),50,' ') program_name,
+round(avg((a.value/b.value)*100),2) "avg_parse_%",
+round(max((a.value/b.value)*100),2) "max_parse_%",
+count(*) program_session_count
+from v\$session s,v\$sesstat a,v\$sesstat b, v\$instance d
+where b.value>0 and s.sid=a.sid and a.sid=b.sid and
+a.statistic#=(select statistic# from v\$statname
+where name='parse count (hard)') and b
+.statistic#=(select statistic# from v\$statname
+where name='parse count (total)')
+group by substr(d.host_name,1,8),
+substr(d.instance_name,1,8),
+rpad(nvl(program,machine),50,' ')
+order by round(avg((a.value/b.value)*100),2) desc)
+where rownum < 35
+/
+EOF
+}
+############################################
+# Main
+############################################
+
+typeset -u USER_NAME=`echo $2|cut -d. -f1`
+if [ -z "$USER_NAME" ] 
+then
+	export USER_NAME="%"
+fi
+
+case $1 in
+    -h  ) Usage ;;
+    -f  ) show_full ;;
+	-s  ) stats ;;
+	-hs ) hard_parse_sql ;;
+	-hp ) hard_parse_prog ;;
+    ""  ) normal ;;
+     *  ) Usage ;;
+  esac

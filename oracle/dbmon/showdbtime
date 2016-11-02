@@ -1,0 +1,47 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showdbtime
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 180 feed off
+alter session set nls_date_format='DD-MON-YYYY HH24:MI';
+column host_name format a10 
+column force_logging format a9 head FORCE_LOG
+column flashback_on format a5 head FLASH
+column database_role format a15
+column instance_name format a8 head INSTANCE
+column version format a10
+column SUPPLEMENTAL_LOG_DATA_MIN for a6 head SUPMIN trunc
+column SUPPLEMENTAL_LOG_DATA_PK for a6 head SUP_PK
+column SUPPLEMENTAL_LOG_DATA_UI for a6 head SUP_UI
+column ARCHIVELOG_COMPRESSION for a7 head ARC_ZIP trunc
+
+select dbid, host_name,name, instance_name, version, log_mode, archiver,flashback_on,force_logging,
+SUPPLEMENTAL_LOG_DATA_MIN,SUPPLEMENTAL_LOG_DATA_PK,SUPPLEMENTAL_LOG_DATA_UI,ARCHIVELOG_COMPRESSION,
+created, STARTUP_TIME,database_role from v\$instance, v\$database;
+
+col sessions_current    for 999,999 head SESS_CUR
+col sessions_highwater  for 999,999 head SESS_MAX 
+col sga                 for 999,999 head SGA_MB
+col MB                  for 9,999.9 head DB_GB   
+col tranx               for 999,999,999
+col miss                for 9.99
+col startup_time        for a9 trunc
+col global_name         for a20
+
+SELECT sessions_current, sessions_highwater, sga,  MB,  tranx, miss, global_name
+FROM  v\$process, v\$license,  v\$version, v\$database, v\$instance,
+      (select sum(bytes)/1024/1024/1024 MB from v\$datafile),
+      (select sum(value)/1024/1024 sga from v\$sga),
+      (select value tranx from v\$sysstat where name = 'user commits'),
+      (select sum(reloads)*100/(sum(reloads)+sum(pins)) miss from v\$librarycache),
+      (select global_name from global_name)
+WHERE rownum = 1;
+
+EOF

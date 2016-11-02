@@ -1,0 +1,425 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show tablespace growth
+#
+#  USAGE: showgrowth
+#		  showgrowth -t TABLESPACE_NAME DAYS
+#		  showgrowth -d DAYS
+#
+#  By Sam Yeoman - Jan 2010
+#*****************************************************************************
+
+export DBA_STATS_CONN="dba_stats/TABASOLJ1249@ditoms"
+############################################
+# Show usage
+############################################
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                              | Help"
+ echo "-------------------------------------------------------------------------"
+ echo "From Statistis:"
+ echo "    -tab TABLE_NAME DAYS            | table_name"
+ echo "    -top DAYS                       | top tables"
+ echo "    -db                             | database"
+ echo "-------------------------------------------------------------------------"
+ echo "From OEM:"
+ echo "    -n                              | Normal"
+ echo "    -t   TABLESPACE_NAME DAYS       | tablespace"
+ echo "    -d   DAYS                       | database "
+ echo "    -ds  DAYS                       | database growth summary "
+ echo "       }\n"
+}
+
+############################################
+# Normal output 
+############################################
+normal()
+{
+        sqlplus -s /nolog <<EOF
+        conn $DBA_STATS_CONN
+        set feed off echo off verify off pagesize 199 linesize 199 
+        alter session set nls_date_format='dd/mm/yyyy';
+        column TABLESPACE format a28
+        column USED_MB format 999,999,999 head "CURRENT|USED MB"
+        column DLY_AVG_GROWTH_LAST_MONTH format 999,999,999 head "DLY AVG GROWTH|LAST MONTH"
+        break on report
+        compute sum of USED_MB on report
+        compute sum of DLY_AVG_GROWTH_LAST_MONTH on report
+        
+        SELECT 
+                m1.KEY_VALUE as TABLESPACE,
+                round(m1.AVERAGE,0) as USED_MB,
+                round((m1.average-m2.average)/31,0) as DLY_AVG_GROWTH_LAST_MONTH
+        FROM sysman.MGMT\$METRIC_DAILY m1, sysman.MGMT\$METRIC_DAILY m2
+        WHERE     m1.metric_name = 'tbspAllocation'
+                AND m1.TARGET_NAME = '$DB_NAME'
+                AND m1.metric_column = 'spaceUsed'
+                AND m1.rollup_timestamp = trunc(SYSDATE) - 1
+                AND m2.rollup_timestamp = trunc(SYSDATE) - '$DAYS'  
+                AND m1.target_name = m2.target_name
+                AND m1.KEY_VALUE = m2.KEY_VALUE
+                AND m1.metric_column = m2.metric_column
+                AND m1.metric_name = m2.metric_name
+		        AND m1.key_value not in ('TEMP','UNDOTBS1','UNDOTBS2') 
+        ORDER BY 1;
+EOF
+}
+
+############################################
+# Tablespace Output
+############################################
+tablespace()
+
+{
+        sqlplus -s /nolog <<EOF
+        conn $DBA_STATS_CONN
+        set feed off echo off verify off pages 200 lines 160
+        column DATE format 999,999,999
+        column USED_MB format 999,999,999
+        alter session set nls_date_format='dd/mm/yyyy'; 
+        SELECT ROLLUP_TIMESTAMP as "DATE", round(AVERAGE,0) as USED_MB 
+        FROM sysman.MGMT\$METRIC_DAILY 
+        WHERE metric_name='tbspAllocation' 
+        and TARGET_NAME='$DB_NAME' 
+        and KEY_VALUE=upper('$NAME')
+        and metric_column='spaceUsed'
+        and rollup_timestamp>sysdate-('$DAYS') - 1
+        ORDER BY 1 ;
+
+        column "GROWTH MB LAST $DAYS DAYS" format 999,999,999
+
+  SELECT 
+         round((m1.average-m2.average),2) as "GROWTH MB LAST $DAYS DAYS"
+    FROM sysman.MGMT\$METRIC_DAILY m1, sysman.MGMT\$METRIC_DAILY m2
+   WHERE     m1.metric_name = 'tbspAllocation'
+         AND m1.TARGET_NAME = '$DB_NAME'
+         AND m1.metric_column = 'spaceUsed'
+         AND m1.rollup_timestamp = trunc(SYSDATE) - 1
+         AND m2.rollup_timestamp = trunc(SYSDATE) - '$DAYS' 
+         AND m1.target_name = m2.target_name
+         AND m1.KEY_VALUE = m2.KEY_VALUE
+         AND m1.metric_column = m2.metric_column
+         AND m1.metric_name = m2.metric_name
+         AND m1.KEY_VALUE='$NAME'
+		 AND m1.key_value not in ('TEMP','UNDOTBS1','UNDOTBS2') 
+        ORDER BY 1;
+
+EOF
+}
+
+############################################
+# DB Output
+############################################
+database_from_stats()
+{
+        sqlplus -s /nolog <<EOF
+        conn $DBA_STATS_CONN 
+        set feed off
+        set echo off
+        set verify off
+        set lines 199 trimsp on pages 1000
+        col stats_date for a12
+        alter session set nls_date_format='dd/mm/yyyy'; 
+        col USED for 999,999,999
+        col ALLOC for 999,999,999
+        col ALLOC_WITH_TEMP for 999,999,999
+
+        SELECT 
+                stats_date, 
+                trunc(sum(used_mb)) USED,
+                trunc(sum(ALLOC_MB)) ALLOC,
+                trunc(sum(ALLOC_MB))+150000+200000 ALLOC_WITH_TEMP
+        FROM 
+                dba_stats.TABLESPACE_STATS
+        WHERE 
+                db_name='$DB_NAME' 
+                group by stats_date
+                order by 1;
+EOF
+}
+
+############################################
+# DB Output
+############################################
+database()
+{
+        sqlplus -s /nolog <<EOF
+        conn $DBA_STATS_CONN 
+        set feed off
+        set echo off
+        set verify off
+        set pagesize 200
+        set linesize 152
+        column DATE format 999,999,999
+        column USED_MB format 999,999,999
+        alter session set nls_date_format='dd/mm/yyyy'; 
+        SELECT ROLLUP_TIMESTAMP as "DATE", round(sum(AVERAGE),0) as USED_MB 
+        FROM sysman.MGMT\$METRIC_DAILY 
+        WHERE metric_name='tbspAllocation' 
+        and TARGET_NAME='$DB_NAME' 
+        and metric_column='spaceUsed'
+        and rollup_timestamp>sysdate-('$DAYS') - 1
+        and key_value not in ('TEMP','UNDOTBS1','UNDOTBS2','CONV_DATA')
+        group by ROLLUP_TIMESTAMP
+        order by 1;
+
+        column "GROWTH MB LAST $DAYS DAYS" format 999,999,999 
+        
+        SELECT 
+                round(sum(m1.average),0)-round(sum(m2.average),0) as "GROWTH MB LAST $DAYS DAYS"
+        FROM sysman.MGMT\$METRIC_DAILY m1, sysman.MGMT\$METRIC_DAILY m2
+        WHERE     m1.metric_name = 'tbspAllocation'
+                AND m1.TARGET_NAME = '$DB_NAME'
+                AND m1.metric_column = 'spaceUsed'
+                AND m1.rollup_timestamp = trunc(SYSDATE) - 1
+                AND m2.rollup_timestamp = trunc(SYSDATE) - '$DAYS' 
+                AND m1.target_name = m2.target_name
+                AND m1.KEY_VALUE = m2.KEY_VALUE
+                AND m1.metric_column = m2.metric_column
+                AND m1.metric_name = m2.metric_name
+		        AND m1.key_value not in ('TEMP','UNDOTBS1','UNDOTBS2') 
+        ORDER BY 1;
+
+EOF
+}
+
+############################################
+# top_table
+############################################
+table()
+{
+        sqlplus -s /nolog <<EOF
+        conn $DBA_STATS_CONN 
+        set feed off echo off verif off pages 100 lines 199 trimsp on 
+        col date_day for a11
+        col owner for a20 trunc
+        col table_name for a30 
+        col table_mb for 999,999,999
+        col lob_mb for 999,999,999
+        col index_mb for 999,999,999
+        col total_mb for 999,999,999
+
+        select to_char(date_day,'yyyy/mm/dd') date_day, owner, table_name, table_mb, lob_mb, index_mb , (table_mb+lob_mb+index_mb) total_mb
+        from DBA_STATS.SEGMENT_STATS
+        where db_name='$DB_NAME'
+        and date_day > sysdate -$DAYS
+        and table_name='$NAME'
+        order by date_day;
+EOF
+}
+
+############################################
+# top_table
+############################################
+top_table()
+{
+        sqlplus -s /nolog <<EOF
+        conn $DBA_STATS_CONN 
+        set feed off echo off verif off pages 0 lines 199 trimsp on 
+
+        drop table DBA_STATS.TEMP_GROWTH_REPORT ;
+        create table DBA_STATS.TEMP_GROWTH_REPORT
+        as
+        select 
+        '$DB_NAME' as db_name,
+        a.dt as date_end,
+        b.dt as date_start
+        from    
+        (select max(date_day) dt from SEGMENT_STATS where db_name='$DB_NAME') a,
+        (select max(date_day) dt from SEGMENT_STATS where db_name='$DB_NAME' and date_day<sysdate-$DAYS ) b;
+
+        set pages 100
+        col db_name for a14
+        col date_start for a11
+        col date_end for a11
+        col days for 9,999,999
+        select 
+                db_name, 
+                to_char(date_start,'dd/mm/yyyy') date_start, 
+                to_char(date_end,'dd/mm/yyyy') date_end, 
+                date_end-date_start days  
+        from DBA_STATS.TEMP_GROWTH_REPORT;
+
+        col owner for a20 trunc
+        col table_name for a30 trunc
+        col A_MB for 999,999,999
+        col B_MB for 999,999,999
+        col DELTA for 999,999,999
+
+        set pages 100
+        select * from
+        (
+                select 
+                        S1.OWNER,
+                        S1.TABLE_NAME,
+                        (S1.TABLE_MB+S1.LOB_MB+S1.INDEX_MB) A_MB,
+                        (S2.TABLE_MB+S2.LOB_MB+S2.INDEX_MB) B_MB,
+                        (S2.TABLE_MB+S2.LOB_MB+S2.INDEX_MB) - (S1.TABLE_MB+S1.LOB_MB+S1.INDEX_MB) DELTA
+                from 
+                        DBA_STATS.TEMP_GROWTH_REPORT R,
+                        DBA_STATS.SEGMENT_STATS S1,
+                        DBA_STATS.SEGMENT_STATS S2
+                where
+                        S1.DATE_DAY = R.DATE_START and
+                        S1.DB_NAME = R.DB_NAME and
+                        S2.DATE_DAY  = R.DATE_END and
+                        S2.DB_NAME = R.DB_NAME and
+                        S1.OWNER=S2.OWNER and
+                        S1.TABLE_NAME=S2.TABLE_NAME and 
+                        (S2.TABLE_MB+S2.LOB_MB+S2.INDEX_MB) - (S1.TABLE_MB+S1.LOB_MB+S1.INDEX_MB) > 00  
+                        ORDER BY 5 DESC
+        ) where rownum<30;
+
+EOF
+}
+
+############################################
+# database growth
+############################################
+database_growth()
+{
+        sqlplus -s /nolog <<EOF
+        conn $DBA_STATS_CONN 
+        set feed off echo off verif off pages 0 lines 199 trimsp on 
+
+        drop table DBA_STATS.TEMP_GROWTH_REPORT ;
+        create table DBA_STATS.TEMP_GROWTH_REPORT
+        as
+        select 
+        '$DB_NAME' as db_name,
+        a.dt as date_end,
+        b.dt as date_start
+        from    
+        (select max(date_day) dt from SEGMENT_STATS where db_name='$DB_NAME') a,
+        (select max(date_day) dt from SEGMENT_STATS where db_name='$DB_NAME' and date_day<sysdate-$DAYS ) b;
+
+        set pages 100
+        col db_name for a14
+        col date_start for a11
+        col date_end for a11
+        col days for 9,999,999
+        select 
+                db_name, 
+                to_char(date_start,'dd/mm/yyyy') date_start, 
+                to_char(date_end,'dd/mm/yyyy') date_end, 
+                date_end-date_start days  
+        from DBA_STATS.TEMP_GROWTH_REPORT;
+
+        set pages 0
+        prompt -------------- ----------- ----------- -----------
+
+        col cola for a14
+        col A_TABLE_MB for 99,999,999 
+        col B_TABLE_MB for 99,999,999 
+        col COLD for 9,999,999 
+
+        select 
+        'TABLE_MB' COLA,
+        sum(S1.TABLE_MB) A_TABLE_MB,
+        sum(S2.TABLE_MB) B_TABLE_MB,
+        sum(S2.TABLE_MB-S1.TABLE_MB) COLD
+    from 
+        DBA_STATS.TEMP_GROWTH_REPORT R,
+        DBA_STATS.SEGMENT_STATS S1,
+        DBA_STATS.SEGMENT_STATS S2
+    where
+        S1.DATE_DAY = R.DATE_START and
+        S1.DB_NAME = R.DB_NAME and
+        S2.DATE_DAY  = R.DATE_END and
+        S2.DB_NAME = R.DB_NAME and
+        S1.OWNER=S2.OWNER and
+        S1.TABLE_NAME=S2.TABLE_NAME
+    union all  
+    select 
+        'LOB_MB',
+        sum(S1.LOB_MB) A_LOB_MB,
+        sum(S2.LOB_MB) B_LOB_MB,
+        sum(S2.LOB_MB-S1.LOB_MB) LOB_GROWTH_MB
+    from 
+        DBA_STATS.TEMP_GROWTH_REPORT R,
+        DBA_STATS.SEGMENT_STATS S1,
+        DBA_STATS.SEGMENT_STATS S2
+    where
+        S1.DATE_DAY = R.DATE_START and
+        S1.DB_NAME = R.DB_NAME and
+        S2.DATE_DAY  = R.DATE_END and
+        S2.DB_NAME = R.DB_NAME and
+        S1.OWNER=S2.OWNER and
+        S1.TABLE_NAME=S2.TABLE_NAME
+    union all
+    select 
+        'INDEX_MB',
+        sum(S1.INDEX_MB) A_INDEX_MB,
+        sum(S2.INDEX_MB) B_INDEX_MB,
+        sum(S2.INDEX_MB-S1.INDEX_MB) INDEX_GROWTH_MB
+    from 
+        DBA_STATS.TEMP_GROWTH_REPORT R,
+        DBA_STATS.SEGMENT_STATS S1,
+        DBA_STATS.SEGMENT_STATS S2
+    where
+        S1.DATE_DAY = R.DATE_START and
+        S1.DB_NAME = R.DB_NAME and
+        S2.DATE_DAY  = R.DATE_END and
+        S2.DB_NAME = R.DB_NAME and
+        S1.OWNER=S2.OWNER and
+        S1.TABLE_NAME=S2.TABLE_NAME
+    union all
+    select 
+        'TOTAL_MB',
+        sum((S1.TABLE_MB+S1.LOB_MB+S1.INDEX_MB)) A_TOTAL_MB,
+        sum((S2.TABLE_MB+S2.LOB_MB+S2.INDEX_MB)) B_TOTAL_MB,
+        sum((S2.TABLE_MB+S2.LOB_MB+S2.INDEX_MB) - (S1.TABLE_MB+S1.LOB_MB+S1.INDEX_MB)) GROWTH_MB
+    from 
+        DBA_STATS.TEMP_GROWTH_REPORT R,
+        DBA_STATS.SEGMENT_STATS S1,
+        DBA_STATS.SEGMENT_STATS S2
+    where
+        S1.DATE_DAY = R.DATE_START and
+        S1.DB_NAME = R.DB_NAME and
+        S2.DATE_DAY  = R.DATE_END and
+        S2.DB_NAME = R.DB_NAME and
+        S1.OWNER=S2.OWNER and
+        S1.TABLE_NAME=S2.TABLE_NAME;
+
+EOF
+}        
+
+############################################
+# Main
+############################################
+
+typeset -u DB_NAME=`echo $ORACLE_SID | cut -c 1-6`
+
+if [ "$1" = "-t" -o "$1" = "-tab" ]
+then
+        if [ -z "$2" ]
+        then
+                Usage
+                exit 1
+        fi
+        typeset -u NAME=`echo $2|cut -d. -f1`
+        typeset -u DAYS=`echo $3|cut -d. -f1`
+else
+        typeset -u DAYS=`echo $2|cut -d. -f1`
+fi
+        
+if [ -z "$DAYS" ] 
+then
+        export DAYS="31"
+fi
+
+case $1 in
+    -h  ) Usage ;;
+    -t   ) tablespace ;;
+    -tab ) table ;;
+    -top ) top_table ;;
+    -n  ) normal ;;
+    -d  ) database ;;
+    -db ) database_from_stats ;;
+    -ds ) database_growth ;;
+     *  ) Usage ;;
+  esac
+

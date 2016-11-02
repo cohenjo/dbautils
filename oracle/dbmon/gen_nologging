@@ -1,0 +1,53 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to generate disable cons for user 
+#
+#  USAGE: gen_nologging
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+TEMP_FILE=/tmp/gennologging_$$.sql
+TEMP_FILE_LOG=/tmp/gennologging_run_$$.sql
+
+echo "set termout off feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+select 'alter index '||owner||'.'||index_name||' nologging;' from dba_indexes where owner like '%WORK%' or owner like 'REF_APPL%';
+select 'alter table '||owner||'.'||table_name||' nologging;' from dba_tables where owner like '%WORK%' or owner like 'REF_APPL%';
+spool off
+" | sqlplus -s "/ as sysdba" > /dev/null
+
+echo "Head of 10 first lines:"
+echo "--------------------------------------------------------------------------"
+head -n 10 $TEMP_FILE
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "ALTER" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes changes to apply"
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+echo "Would you like to execute ? (Y/N) \c"; read Local
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+        set term off
+	@$TEMP_FILE
+	spool off
+	" | sqlplus -s "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors changes applied with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

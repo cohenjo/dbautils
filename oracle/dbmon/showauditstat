@@ -1,0 +1,42 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: showauditstat  user_name 
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+
+sqlplus -s "/ as sysdba" <<EOF
+set verify off line 200 feed off pages 300
+column sessionid format 999999999999
+column inst_id format 99
+column userid format a15 trunc
+column USERHOST format a20
+column ouser format a10 trunc
+column logon_time format a18
+column logout_time format a18
+column log_write format 9,999,999
+column log_read format 9,999,999
+column phy_read format 9,999,999
+column cpu format 99,999
+select  
+    SESSIONID, 
+    INSTANCE# inst_id, 
+    USERID, 
+    replace (USERHOST,'.sensis.com.au','') USERHOST ,
+    spare1 ouser, 
+    to_char(NTIMESTAMP#+10/24,'DD/MM/YY HH24:MI:SS') logon_time,
+    to_char(LOGOFF\$TIME,'DD/MM/YY HH24:MI:SS') logout_time,
+    LOGOFF\$LWRITE log_write, 
+    LOGOFF\$LREAD log_read, 
+    LOGOFF\$PREAD phy_read, 
+    SESSIONCPU cpu
+from sys.aud$ a 
+where sessionid> (select max(sessionid) from sys.aud$)-2500
+and userid like '%${NAME}%'
+order by NTIMESTAMP#;
+EOF

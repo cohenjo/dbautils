@@ -1,0 +1,34 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show objects fragmentation on a tablespace 
+#
+#  USAGE: showfmax tablespace_name
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "Tablespace must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+col SEGMENT_NAME for a35
+col owner for a20
+set pages 200 lines 199 trimspo  on 
+set feed off tab off
+col MB for 9999.99
+select owner,SEGMENT_NAME, FILE_ID,BLOCK_ID,BYTES/1024/1024 MB
+from dba_extents
+where tablespace_name = upper('$NAME')
+union 
+select '---' as owner,'**Free Size' SEGMENT_NAME, FILE_ID,BLOCK_ID,BYTES/1024/1024 MB
+from dba_free_space 
+where tablespace_name = upper('$NAME')
+order by FILE_ID,BLOCK_ID;
+EOF
+
+exit
+

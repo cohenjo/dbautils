@@ -1,0 +1,47 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: showrole role_name
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "ROLE must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set verify off line 132 feed off pages 300
+column grantee format a20
+column granted_role format a20
+column admin_option heading admin format a8
+prompt *********************************************************************************
+prompt *                                  Users                                        *
+prompt *********************************************************************************
+select grantee, admin_option  from dba_role_privs where granted_role = upper('$NAME') ;
+prompt .
+prompt *********************************************************************************
+prompt *                               Sys Privs                                       *
+prompt *********************************************************************************
+select privilege from dba_sys_privs where grantee = upper('$NAME');
+EOF
+
+echo " "
+echo "*********************************************************************************"
+echo "*                           Table Onwer privileges                              *"
+echo "*********************************************************************************"
+echo "For a list of Tables Priviliges, press enter."; read TEMP
+sqlplus -s "/ as sysdba" <<EOF
+set feed off verify off line 132 pages 200
+column owner format a20
+column grantee format a30
+column table_name format a34
+column privilege format a12
+select owner, table_name,privilege,grantee  from dba_tab_privs where grantee = upper('${NAME}')
+order by owner
+/
+EOF

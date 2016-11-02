@@ -1,0 +1,140 @@
+#!/bin/ksh 
+
+#######################################################################
+# Sam Yeoman 2009
+# Script: showdisk
+# Description: to show top 10 reads and writes to datafiles
+#######################################################################
+
+############################################
+# Show usage
+############################################
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h   | Help"
+ echo " -tw  | show all tablespace writes"
+ echo " -dw  | show all datafiles writes"
+ echo " -tr  | show all tablespace reads"
+ echo " -dr  | show all datafiles reads"
+ echo "       }\n"
+ printf "\n"
+}
+
+############################################
+# Normal output 
+############################################
+normal()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set pages 200 feedback off lines 132 trims on
+column tablespace_name format a16
+col writes for 999,999,999,999
+col reads for 999,999,999,999
+
+column name format a60 head "TOP TABLESPACE WRITES" trunc
+select * from (SELECT t.name, sum(f.phywrts) writes FROM v\$datafile d, v\$filestat f, v\$tablespace t
+WHERE d.file# = f.file# AND d.TS#=T.TS# group by t.name order by sum(f.phywrts) desc) where rownum<=5;
+
+column name format a60 head "TOP DATAFILE WRITES" trunc
+select * from (SELECT d.name, f.phywrts writes FROM v\$datafile d, v\$filestat f 
+WHERE d.file# = f.file# ORDER BY f.phywrts desc) where rownum<=9;
+
+column name format a60 head "TOP TABLESPACE READS" trunc
+select * from (SELECT t.name, sum(f.phyrds) reads FROM v\$datafile d, v\$filestat f, v\$tablespace t
+WHERE d.file# = f.file# AND d.TS#=T.TS# group by t.name order by sum(f.phyrds) desc) where rownum<=5;
+
+column name format a60 head "TOP DATAFILE READS" trunc
+select * from (SELECT d.name, f.phyrds reads FROM v\$datafile d, v\$filestat f 
+WHERE d.file# = f.file# ORDER BY f.phyrds desc) where rownum<=9;
+EOF
+}
+
+############################################
+# show_all_tablespace_writes
+############################################
+show_all_tablespace_writes()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set pages 200 feedback off lines 132 trims on
+column tablespace_name format a16
+col writes for 999,999,999,999
+col reads for 999,999,999,999
+
+column name format a60 head "TABLESPACE" trunc
+SELECT t.name, sum(f.phywrts) writes FROM v\$datafile d, v\$filestat f, v\$tablespace t
+WHERE d.file# = f.file# AND d.TS#=T.TS# group by t.name order by sum(f.phywrts) desc;
+EOF
+}
+
+############################################
+# show_all_datafiles_writes
+############################################
+show_all_datafiles_writes()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set pages 200 feedback off lines 132 trims on
+column tablespace_name format a16
+col writes for 999,999,999,999
+col reads for 999,999,999,999
+
+column name format a60 head "DATAFILE" trunc
+SELECT d.name, f.phywrts writes FROM v\$datafile d, v\$filestat f 
+WHERE d.file# = f.file# ORDER BY f.phywrts desc;
+EOF
+}
+
+############################################
+# show_all_tablespace_reads
+############################################
+show_all_tablespace_reads()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set pages 200 feedback off lines 132 trims on
+column tablespace_name format a16
+col writes for 999,999,999,999
+col reads for 999,999,999,999
+
+column name format a60 head "TABLESPACE" trunc
+SELECT t.name, sum(f.phyrds) reads FROM v\$datafile d, v\$filestat f, v\$tablespace t
+WHERE d.file# = f.file# AND d.TS#=T.TS# group by t.name order by sum(f.phyrds) desc;
+EOF
+}
+
+############################################
+# show_all_datafiles_reads
+############################################
+show_all_datafiles_reads()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set pages 200 feedback off lines 132 trims on
+column tablespace_name format a16
+col writes for 999,999,999,999
+col reads for 999,999,999,999
+
+column name format a60 head "DATAFILE" trunc
+SELECT d.name, f.phyrds reads FROM v\$datafile d, v\$filestat f 
+WHERE d.file# = f.file# ORDER BY f.phyrds desc;
+EOF
+}
+
+############################################
+# Main
+############################################
+
+typeset -u USER_NAME=`echo $2|cut -d. -f1`
+if [ -z "$USER_NAME" ]
+then
+        export USER_NAME="%"
+fi
+
+case $1 in
+    -h  ) Usage ;;
+   -tw  ) show_all_tablespace_writes ;;
+   -dw  ) show_all_datafiles_writes ;;
+   -tr  ) show_all_tablespace_reads ;;
+   -dr  ) show_all_datafiles_reads ;;
+    ""  ) normal ;;
+     *  ) Usage ;;
+  esac

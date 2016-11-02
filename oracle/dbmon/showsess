@@ -1,0 +1,785 @@
+#!/bin/ksh 
+
+######################################################################
+# Script:    showsess
+# Author:    Adi Zohar
+#
+#######################################################################
+
+#########################################################################
+# Print script usage
+#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -h                | Help"
+ echo " -a     [username] | Active connections"
+ echo " -au               | Audit sessions"
+ echo " -c     [username] | Current connections" 
+ echo " -cweb  [username] | Current connections for web%" 
+ echo " -cl    [username] | Clients connections"
+ echo " -clcnt            | Clients connections count"
+ echo " -cpu   [username] | CPU usage"
+ echo " -d     [username] | Details of current sessions"
+ echo " -e     [username] | Events of sessions, and timed statistics"
+ echo " -hit              | Sessions with a hit ratio < 80%"
+ echo " -o     [username] | Objects that users are working on"
+ echo " -old   [hours=12] | Sessions older hours "
+ echo " -s     [username] | Sql cursors"
+ echo " -r                | Rows Processed > 1000"
+ echo " -su               | Suspend Sessions  "
+ echo " -w                | Current wait event  "
+ echo " -b                | Current waiters/blocker_sid "
+ echo "       }\n"
+ printf "\n"
+}
+
+
+########################
+# Active Connections
+########################
+Active()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    200
+set pages       900
+set feedback    off
+set verify 	off
+
+col SID         for 99999 trunc
+col running_sec for a8 head "Run|Secs"
+col inst_id     for 9 trunc head "I"
+col serial#     for 99999 trunc 	head SER#
+col username    for a15 trunc 		head "User-Name"
+col osuser      for a10 trunc		head "Remote|OS User"
+col status      for a3 trunc            head "STA|TUS"
+col machine     for a9 trunc
+col process     for a7 trunc		head "Remote|Process"
+col spid        for a6 trunc		head "Shadow|Process"
+col program     for a28 trunc 		head Program
+col temp_mb     for 999999              head "Temp|MB"
+col undo_mb     for 999999              head "Undo|MB"
+col logon_time  for a11 
+col sql_id      for a14
+col sql         for a51 trunc
+SELECT distinct
+        sess.inst_id, 
+        sess.sid, 
+        sess.serial#, 
+        sess.username, 
+        substr(osuser,1,10) osuser, 
+        status, 
+        sess.process,
+        proc.spid, 
+        replace(sess.machine,'.sensis.com.au','') machine, 
+        replace(sess.program,'(TNS V1-V3)','') program, 
+        regexp_substr(NUMTODSINTERVAL(last_call_et, 'SECOND'),'\d{0}\d{1}:\d{2}:\d{2}') running_sec,
+        TEMP_MB, UNDO_MB,
+        s.sql_id , 
+        s.sql_text sql
+FROM 
+        gv\$session sess,  
+        gv\$process proc, 
+        v\$sql s,
+        (select ktssoses as saddr, ktssosno as serial#, sum((ktssoblks/128)) TEMP_MB from sys.x\$ktsso group by  ktssoses, ktssosno) tmp,
+        (select ses_addr as saddr,sum(used_ublk/128) UNDO_MB from v\$transaction group by ses_addr) undo
+WHERE sess.inst_id=proc.inst_id (+)  and
+      (nvl(sess.username,'%') like '$USER_NAME' )
+AND   sess.status='ACTIVE' and sess.username is not null
+AND   sess.paddr=proc.addr (+)
+and   sess.sql_id = s.sql_id (+)
+and   sess.saddr=tmp.saddr (+) and sess.serial#=tmp.serial# (+)
+and   sess.saddr=undo.saddr (+)
+ORDER BY running_sec desc,4,1,2,3
+;
+SQL
+}
+
+########################
+# Sessobj
+########################
+Sessobj()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    192
+set pages       900
+set feedback    off
+set verify 	off
+
+col inst_id         for 99 
+col SID         for 99999 trunc
+col serial#     for 99999 trunc 	head SER#
+col username    for a25 		head "User Name"
+col osuser      for a10 trunc		head "OS User"
+col status      for a3 trunc
+col object	for a21         	head "Object"
+col program     for a18 trunc 		head "Program"
+col command     for a15                 head "Command"
+
+
+SELECT distinct sess.inst_id, sess.sid, serial#, username, substr(osuser,1,10) osuser, status,
+       object, program, 
+       upper(decode(nvl(command, 0),
+                0,      '---',
+                1,      'Create Table',
+                2,      'Insert -',
+                3,      'Select -',
+                4,      'Create Clust',
+                5,      'Alter Clust',
+                6,      'Update -',
+                7,      'Delete -',
+                8,      'Drop -',
+                9,      'Create Index',
+                10,     'Drop Index',
+                11,     'Alter Index',
+                12,     'Drop Table',
+                13,     'Create Seq',
+                14,     'Alter Seq',
+                15,     'Alter Table',
+                16,     'Drop Seq',
+                17,     'Grant',
+                18,     'Revoke',
+                19,     'Create Syn',
+                20,     'Drop Syn',
+                21,     'Create View',
+                22,     'Drop View',
+                23,     'Validate Ix',
+                24,     'Create Proc',
+                25,     'Alter Proc',
+                26,     'Lock Table',
+                27,     'No Operation',
+                28,     'Rename',
+                29,     'Comment',
+                30,     'Audit',
+                31,     'NoAudit',
+                32,     'Create DBLink',
+                33,     'Drop DB Link',
+                34,     'Create Database',
+                35,     'Alter Database',
+                36,     'Create RBS',
+                37,     'Alter RBS',
+                38,     'Drop RBS',
+                39,     'Create Tablespace',
+                40,     'Alter Tablespace',
+                41,     'Drop Tablespace',
+                42,     'Alter Session',
+                43,     'Alter User',
+                44,     'Commit',
+                45,     'Rollback',
+                47,     'PL/SQL Exec',
+                48,     'Set Transaction',
+                49,     'Switch Log',
+                50,     'Explain',
+                51,     'Create User',
+                52,     'Create Role',
+                53,     'Drop User',
+                54,     'Drop Role',
+                55,     'Set Role',
+                56,     'Create Schema',
+                58,     'Alter Tracing',
+                59,     'Create Trigger',
+                61,     'Drop Trigger',
+                62,     'Analyze Table',
+                63,     'Analyze Index',
+                69,     'Drop Procedure',
+                71,     'Create Snap Log',
+                72,     'Alter Snap Log',
+                73,     'Drop Snap Log',
+                74,     'Create Snapshot',
+                75,     'Alter Snapshot',
+                76,     'Drop Snapshot',
+                85,     'Truncate Table',
+                88,     'Alter View',
+                91,     'Create Function',
+                92,     'Alter Function',
+                93,     'Drop Function',
+                94,     'Create Package',
+                95,     'Alter Package',
+                96,     'Drop Package',
+                46,     'Savepoint')) command
+FROM gv\$session sess, gv\$access ac 
+WHERE sess.sid = ac.sid  and sess.inst_id=ac.inst_id
+AND   sess.username like '$USER_NAME'
+ORDER BY username 
+;
+SQL
+}
+
+########################
+# Sesscurs
+########################
+Sesscurs()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    196
+set pages       900
+set feedback    off
+set verify 	off
+
+col username	for a25                 head "User Name"
+col inst_id         for 99 trunc
+col sid         for 99999 trunc
+col serial#     for 99999 trunc 	head SER#
+col osuser      for a10 trunc		head "OS User"
+col sql_text    for a80			head "Sql Text"
+
+break on username on sid on serial# on osuser
+
+SELECT s.inst_id, username, s.sid, serial#, osuser, sql_text 
+FROM gv\$open_cursor o, gv\$session s 
+WHERE o.saddr = s.saddr and o.inst_id=s.inst_id
+AND   username like '$USER_NAME'
+ORDER BY user_name, sid, serial#, osuser 
+;
+SQL
+}
+
+########################
+# Sesshit
+########################
+Sesshit()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    192
+set pages       900
+set feedback    off
+set verify 	off
+
+col inst_id     for 99999 trunc
+col SID         for 99999 trunc
+col username    for a20 	head "User Name"
+col "Hit Ratio" for 99.99 
+
+prompt
+prompt Users with a hit ratio < 80%
+
+SELECT se.username "User" , se.inst_id, se.sid "SID",
+       sum(decode(name, 'consistent gets',value, 0))  "Consis Gets",
+        sum(decode(name, 'db block gets',value, 0))  "Block Gets",
+        sum(decode(name, 'physical reads',value, 0))  "Phys Reads",
+       (sum(decode(name, 'consistent gets',value, 0))  +
+        sum(decode(name, 'db block gets',value, 0))  -
+        sum(decode(name, 'physical reads',value, 0))) /
+       (sum(decode(name, 'consistent gets',value, 0))  +
+        sum(decode(name, 'db block gets',value, 0))  ) "Hit Ratio"
+FROM gv\$sesstat ss, gv\$statname sn, gv\$session se
+WHERE ss.sid    = se.sid and ss.inst_id=sn.inst_id and ss.inst_id=se.inst_id
+  AND sn.statistic# = ss.statistic#
+  AND value != 0
+  AND sn.name in ('db block gets', 'consistent gets', 'physical reads')
+  AND se.username is not null
+GROUP BY se.inst_id, se.username, se.sid
+HAVING (sum(decode(name, 'consistent gets',value, 0))  +
+        sum(decode(name, 'db block gets',value, 0))  -
+        sum(decode(name, 'physical reads',value, 0))) /
+       (sum(decode(name, 'consistent gets',value, 0))  +
+        sum(decode(name, 'db block gets',value, 0))  ) < 0.8
+;
+SQL
+}
+
+########################
+# Active Connections
+########################
+Sessevent()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    196
+set pages       900
+set feedback    off
+set verify 	off
+
+col SID         	for 99999 trunc
+col inst_id         	for 9 trunc
+col username    	for a25 	head "User Name"
+col event       	for a35 	head Event
+col total_waits 	for 99999999	head 'Total|Waits'
+col total_timeouts 	for 99999999	head 'Time|Outs'
+col time_waited 	for 99999999999	head 'Time|Wait'
+
+SELECT  sess.inst_id,
+        sess.username,
+        eve.sid,
+        eve.event,
+        eve.total_waits,
+        eve.total_timeouts,
+        eve.time_waited
+FROM gv\$session sess, gv\$session_event eve
+WHERE (eve.sid = sess.sid) and eve.inst_id=sess.inst_id
+  AND sess.username like '$USER_NAME'
+ORDER BY time_waited asc
+;
+SQL
+}
+
+########################
+# Count Sessions
+########################
+Audit()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    192
+set pages       900
+set feedback    off
+set verify 	off
+
+col username    for a17 	head "User Name"
+col os_username	for a10		head "Os user"
+col sessionid	for 99999	head "Sess ID"
+col action_name	for a20		head Action
+col terminal	for a10 	head Terminal
+
+SELECT username, os_username, sessionid, action_name, timestamp, terminal 
+FROM dba_audit_session
+;
+SQL
+}
+
+
+########################
+# Count Sessions
+########################
+Conn()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    96
+set pages       900
+set feedback    off
+set verify 	off
+
+col username for a30  head    "User Name"
+col sess     for 9999  heading "Sessions Per User"
+col inst_id  for a3 head "Inst"
+
+break on inst_id on report
+
+SELECT  
+        decode(grouping(inst_id),1,'All',inst_id) as inst_id,
+        decode(grouping(username),1,'--------------------',username) as username, 
+        count(username) sess
+FROM gv\$session
+where username like '$USER_NAME'
+GROUP BY rollup(inst_id, username)
+ORDER BY inst_id,sess
+;
+SQL
+}
+
+########################
+# Count Sessions for Web
+########################
+ConnWeb()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    96
+set pages       900
+set feedback    off
+set verify 	off
+
+col username for a30  head    "User Name"
+col sess     for 9999  heading "Sessions Per User"
+col inst_id  for 99 head "Inst"
+
+SELECT  
+        username,
+        inst_id,
+        count(username) sess
+FROM gv\$session
+where username like '$USER_NAME' and osuser like 'web%'
+group by username,inst_id
+ORDER BY username,inst_id
+;
+SQL
+}
+
+
+########################
+# OldDetails
+########################
+OldDetails()
+{
+if [ $USER_NAME = "%" ]
+then
+        USER_NAME=12
+fi
+
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    195
+set pages       900
+set feedback    off
+set verify 	off
+
+col SID         for 99999 trunc
+col inst_id     for 9 trunc
+col serial#     for 99999 trunc 	head SER#
+col username    for a25 		head "User-Name"
+col osuser      for a10 trunc		head "Remote|OS User"
+col status      for a3 trunc
+col machine     for a17 trunc
+col process     for a9 trunc		head "Remote|Process"
+col spid        for a6 trunc		head "Local|Shadow|Process"
+col program     for a25 trunc 		head Program
+col logon_time  for a16 
+SELECT sess.inst_id, sess.sid, sess.serial#, sess.username, substr(osuser,1,10) osuser, 
+       status, sess.process, proc.spid, sess.machine, sess.program, to_char(logon_time,'DD/MM/YYYY HH24:MI') logon_time, server
+FROM gv\$session sess,  gv\$process proc
+WHERE sess.inst_id=proc.inst_id (+)  and (sysdate - logon_time) *24>$USER_NAME and schemaname !='SYS'
+AND   sess.paddr=proc.addr (+)
+ORDER BY sess.logon_time
+;
+SQL
+}
+
+########################
+# SessionRows
+########################
+SessRows()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    195
+set pages       900
+set feedback    off
+set verify 	off
+
+col SID         for 99999 trunc
+col inst_id     for 9 trunc
+col serial#     for 99999 trunc 	head SER#
+col username    for a15 trunc           head "User-Name" 
+col osuser      for a10 trunc		head "Remote|OS User"
+col status      for a3 trunc
+col machine     for a10 trunc
+col process     for a9 trunc		head "Remote|Process"
+col spid        for a6 trunc		head "Local|Shadow|Process"
+col sql_id      for a14
+col sql_text    for a66 trunc
+col rows_processed for 999,999,999,999
+
+SELECT sid, serial#, username, osuser, status, sess.machine, rows_processed, a.sql_id, sql_text
+FROM v\$session sess,
+    v\$sqlarea a
+WHERE   a.sql_id = sess.sql_id and rows_processed>1000 
+ORDER BY rows_processed desc
+;
+SQL
+}
+
+########################
+# Details
+########################
+Details()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    200
+set pages       900
+set feedback    off
+set verify 	off
+
+col SID         for 99999 trunc
+col inst_id     for 9 trunc
+col serial#     for 99999 trunc 	head SER#
+col username    for a25 		head "User-Name"
+col osuser      for a10 trunc		head "Remote|OS User"
+col status      for a3 trunc
+col machine     for a17 trunc
+col process     for a9 trunc		head "Remote|Process"
+col spid        for a6 trunc		head "Local|Shadow|Process"
+col program     for a30 trunc 		head Program
+col logon_time  for a16 
+SELECT sess.inst_id, sess.sid, sess.serial#, sess.username, substr(osuser,1,10) osuser, 
+       status, sess.process, proc.spid, sess.machine, sess.program, to_char(logon_time,'DD/MM/YYYY HH24:MI') logon_time, server
+FROM gv\$session sess,  gv\$process proc
+WHERE sess.inst_id=proc.inst_id (+)  and
+      (nvl(sess.username,'%') like '$USER_NAME')
+AND   sess.paddr=proc.addr (+)
+ORDER BY 4,1,2,3
+;
+SQL
+}
+
+########################
+# Clcnt
+########################
+Clcnt()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    150
+set pages       900
+set feedback    off
+set verify 	off
+
+col machine	for a35	head "Remote|Machine"
+col count	for 999	head Count
+col inst_id	for 9
+
+SELECT sess.inst_id,  decode(machine,null,'PC',machine,machine) machine, 
+       count(sess.username) count
+FROM gv\$session sess, gv\$process proc
+WHERE sess.paddr = proc.addr and sess.inst_id=proc.inst_id
+GROUP BY sess.inst_id, machine
+order by 1,2
+;
+SQL
+}
+
+########################
+# Cpu
+########################
+Cpu()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    96
+set pages       900
+set feedback    off
+set verify 	off
+
+col SID         for 99999 trunc
+col inst_id     for 9 trunc
+col username    for a25 		head "User Name"
+col value	for 999,999,999,999 	head Value
+
+break on report
+compute sum of value on report
+
+SELECT stat.inst_id, username, sess.sid, value 
+FROM gv\$sesstat stat, gv\$statname name, gv\$session sess
+WHERE stat.statistic# = '12' and stat.inst_id=name.inst_id and stat.inst_id=sess.inst_id
+  AND sess.sid = stat.sid 
+  AND stat.statistic# = name.statistic#
+  AND sess.username like '$USER_NAME'
+  AND value > 0 
+ORDER BY 4,1,2,3
+;
+SQL
+}
+
+########################
+# Suspend
+########################
+Suspend()
+{
+        sqlplus -s "/ as sysdba" <<BBB
+        set pages 100 lines 250 trimsp on feed off
+        col SESSION_ID for 999999
+        col username for a10 trunc
+        col suspend_time for a19
+        col ERROR_MSG for a60 trunc
+        col SQL_TEXT for a20 trunc
+        select session_id, username,suspend_time, status, sql_text, error_msg from 
+        dba_resumable r, dba_users d where d.user_id=r.user_id and STATUS = 'SUSPENDED';
+BBB
+}
+
+########################
+# Clients
+########################
+Clients()
+{
+sqlplus -s "/ as sysdba" <<SQL
+set linesize    192
+set pages       900
+set feedback    off
+set verify 	off
+
+col machine	for a20 		head "Remote|Machine"
+col osuser      for a10 trunc           head "Remote|OS User"
+col username    for a25 		head "User Name"
+col sid         for 99999 trunc
+col inst_id     for 99 trunc
+col serial#     for 99999 trunc         head SER#
+col process     for a9 trunc            head "Remote|Process"
+col spid        for a6 trunc            head "Local|Shadow|Process"
+col mint 	for 99999.9 		head "Min.Since"
+
+SELECT sess.inst_id, decode(machine,null,'PC',machine,machine) machine, osuser, sess.username,
+       sess.sid, sess.serial#, sess.process, proc.spid, last_call_et/60 mint
+FROM gv\$session sess, gv\$sesstat stat, gv\$process proc
+WHERE sess.sid = stat.sid and sess.inst_id=stat.inst_id and stat.inst_id=proc.inst_id
+AND   sess.paddr = proc.addr
+AND   stat.statistic# = (SELECT statistic#
+                         FROM v\$statname
+                         WHERE name = 'process last non-idle time')
+AND   sess.username like '$USER_NAME' 
+ORDER BY machine, osuser, inst_id, username, sid
+;
+SQL
+}
+
+########################
+# Waitevent
+########################
+Waitevent()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+ 
+set pages 999;
+column sid format 99999
+column event format a50
+column mode format 9999
+column wait_class format a15
+column username format a16 trunc
+column osuser format a9 trunc
+column program format a45 trunc
+column state format a18 trunc
+column secs_wait format 999999
+column state format a17
+column blocker format 999999
+
+SELECT /*+ use_hash (s,e,se) */ s.indx sid,
+       se.ksuudnam AS username,
+       se.ksuseunm AS osuser,
+       se.ksusepnm AS program,
+--       e.kslednam event,
+       e.kslednam ||' ('||s.ksusewtm||' sec)' as  event,
+       mod(se.ksusep1,16) as "MODE",
+       e.ksledclass wait_class,
+--       s.ksusewtm secs_wait,
+       DECODE (se.ksuseblocker,
+                 4294967295, TO_NUMBER (NULL),
+                 4294967294, TO_NUMBER (NULL),
+                 4294967293, TO_NUMBER (NULL),
+                 4294967292, TO_NUMBER (NULL),
+                 4294967291, TO_NUMBER (NULL),
+                 BITAND (se.ksuseblocker, 65535)) blocker
+FROM x\$ksusecst s, x\$ksled e, x\$ksuse se
+WHERE     s.indx = se.indx
+      AND BITAND (s.ksspaflg, 1) != 0
+      AND BITAND (s.ksuseflg, 1) != 0
+      AND s.ksussseq != 0
+      AND s.ksussopc = e.indx
+      AND e.ksledclass != 'Idle'
+ORDER BY username, program, event
+/
+set pagesize 100
+set linesize 192
+column even format a50
+column wait_class  format a30
+column cnt format 9999
+column session_waiting format 9999
+break on WAIT_CLASS skip 1
+
+  SELECT WAIT_CLASS, event, COUNT (*) as ses_waiting
+    FROM v\$session
+   WHERE status = 'ACTIVE' and wait_class!='Idle'
+GROUP BY WAIT_CLASS, event
+order by 1 asc, 3 desc
+/
+
+EOF
+}
+
+########################
+# Blockers
+########################
+Blockers()
+{
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+
+column SID format 99999
+column OWNER format a19
+column OBJECT_NAME format a33
+column OBJECT_TYPE format a23
+column SUB_NAME format a26
+column ROW_ID format a20
+column BLOCKER_SID format 99999
+
+SELECT /*+ ordered use_hash (k,o,u,s) */
+       k.indx SID,
+       u.name OWNER,
+       o.name OBJECT_NAME,
+       DECODE (o.type#, 0, 'NEXT OBJECT',1,'INDEX',2,'TABLE',3,'CLUSTER',4,'VIEW',5,'SYNONYM',6,'SEQUENCE',7,'PROCEDURE',8,'FUNCTION',9,'PACKAGE',11,'PACKAGE BODY',12,'TRIGGER',13,'TYPE',14,'TYPE BODY',19,'TABLE PARTITION',20,'INDEX PARTITION',21,'LOB',22,'LIBRARY',23,'DIRECTORY',24,'QUEUE',28,'JAVA SOURCE',29,'JAVA CLASS',30,'JAVA RESOURCE',32,'INDEXTYPE',33,'OPERATOR',34,'TABLE SUBPARTITION',35,'INDEX SUBPARTITION',40,'LOB PARTITION',41,'LOB SUBPARTITION',42,NVL (   (SELECT DISTINCT 'REWRITE EQUIVALENCE'  FROM sys.sum$ s WHERE s.obj# = o.obj# AND BITAND (s.xpflags,8388608) =   8388608),  'MATERIALIZED VIEW'),43,'DIMENSION',44,'CONTEXT',46,'RULE SET',47,'RESOURCE PLAN',48,'CONSUMER GROUP',51,'SUBSCRIPTION',52,'LOCATION',55,'XML SCHEMA',56,'JAVA DATA',57,'SECURITY PROFILE',59,'RULE',60,'CAPTURE',61,'APPLY',62,'EVALUATION CONTEXT',66,'JOB',67,'PROGRAM',68,'JOB CLASS',69,'WINDOW',72,'WINDOW GROUP',74,'SCHEDULE',79,'CHAIN',81,'FILE GROUP','UNDEFINED') OBJECT_TYPE,
+       o.subname SUB_NAME,
+       DBMS_ROWID.rowid_create (1,
+                                o.dataobj#,
+                                k.ksusefil,
+                                k.ksuseblk,
+                                k.ksuseslt) AS "ROW_ID",
+       s.ksusewtm secs_wait,
+       DECODE (k.ksuseblocker,
+               4294967295, TO_NUMBER (NULL),
+               4294967294, TO_NUMBER (NULL),
+               4294967293, TO_NUMBER (NULL),
+               4294967292, TO_NUMBER (NULL),
+               4294967291, TO_NUMBER (NULL),
+               BITAND (k.ksuseblocker, 65535)) BLOCKER_SID
+  FROM x\$ksuse k, sys.obj$ o, sys.user$ u, x\$ksusecst s
+  WHERE DECODE (k.ksuseblocker,
+               4294967295, TO_NUMBER (NULL),
+               4294967294, TO_NUMBER (NULL),
+               4294967293, TO_NUMBER (NULL),
+               4294967292, TO_NUMBER (NULL),
+               4294967291, TO_NUMBER (NULL),
+               BITAND (k.ksuseblocker, 65535)) IS NOT NULL
+       AND k.ksuseobj = o.obj#
+       AND o.owner# = u.user#
+       AND o.linkname IS NULL
+       AND (o.type# NOT IN (1 /* INDEX - handled below */
+                             , 10 /* NON-EXISTENT */
+                                 )
+            OR (o.type# = 1
+                AND 1 =
+                      (SELECT 1
+                         FROM sys.ind$ i
+                        WHERE i.obj# = o.obj#
+                              AND i.type# IN
+                                       (1,2,3,4,6,7,9))))
+       AND o.name != '_NEXT_OBJECT'
+       AND o.name != '_default_auditing_options_'
+       AND BITAND (o.flags, 128) = 0
+       AND s.indx = k.indx
+       AND BITAND (s.ksspaflg, 1) != 0
+       AND BITAND (s.ksuseflg, 1) != 0
+       AND s.ksussseq != 0
+  ORDER by 3,7 desc
+/
+EOF
+}
+
+#########################################################################
+# MAIN
+#
+if [ $# -eq 0 ]
+then Usage
+	exit $OK
+fi 
+
+typeset -u USER_NAME=`echo $2|cut -d. -f1`
+if [ -z "$USER_NAME" ] 
+then
+	export USER_NAME="%"
+fi
+
+case $1 in
+    -h   ) Usage ;;
+    -a   ) Active ;;
+    -au  ) Audit ;;
+    -c   ) Conn ;;
+    -cweb ) ConnWeb ;;
+    -cl  ) Clients ;;
+    -clcnt ) Clcnt;;
+    -cpu ) Cpu;;
+    -d   ) Details ;;
+    -old ) OldDetails ;;
+    -e   ) Sessevent;;
+    -hit ) Sesshit;;
+    -o   ) Sessobj ;;
+    -s   ) Sesscurs ;;
+    -r   ) SessRows ;;
+    -su  ) Suspend ;;
+    -w   ) Waitevent ;;
+    -b   ) Blockers ;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit $ERROR 
+           ;;
+  esac

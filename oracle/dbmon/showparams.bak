@@ -1,0 +1,26 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show instance parameters
+#
+#  USAGE: showparams paramname
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s '/ as sysdba' <<EOF
+set pages 300 lines 199 trimspo on feed off
+col parameter_name for a43
+col value  for a27
+col SES_MOD for a3 trunc head "Ses"
+col SYS_MOD for a3 trunc head "Sys"
+col description for a60 trunc
+select ksppinm parameter_name, value, isses_modifiable SES_MOD, issys_modifiable SYS_MOD, ksppdesc description from  
+	   x\$ksppi hd, v\$parameter p
+where 
+	  ksppinm like lower('%${1}%') and
+	  p.name (+) =hd.ksppinm	    
+order by ksppinm
+
+/
+EOF
+

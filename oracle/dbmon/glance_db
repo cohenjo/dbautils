@@ -1,0 +1,23 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to glance database.
+#
+#  USAGE: glance_db                   
+#
+#*****************************************************************************
+while true
+do
+        clear
+        echo "TIME:" `date` ".  NOTE: This Report refreshes every 3 Min"
+        showperformance 07
+        
+        echo "End of Report. Sleeping 3 min."
+        sleep 60
+        echo "Slept 1 min"
+        sleep 60
+        echo "Slept 2 mins"
+        sleep 60 
+done
+
+

@@ -1,0 +1,56 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  Show column usage per table
+#
+#  USAGE: showcolusage table
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "Table must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 199
+column table_name format a25
+column column_name format a20 trunc
+column owner format a14 trunc
+column equality_preds format 999,999 head EQUALITY
+column equijoin_preds format 999,999 head EQUIJOIN
+column nonequijoin_preds format 999,999 head NONEQUIJOIN
+column range_preds format 999,999 head RANGE
+column like_preds format 999,999 head LIKE
+column null_preds format 999,999 head NULL
+column timestamp format a16           
+
+select
+      r.name owner,
+      o.name table_name ,
+      c.name column_name,
+      equality_preds,
+      equijoin_preds,
+      nonequijoin_preds,
+      range_preds,
+      like_preds,
+      null_preds,
+      to_char(timestamp,'DD/MM/YYYY HH24:MI') timestamp
+   from
+      sys.col_usage$ u,
+      sys.obj$ o,
+      sys.col$ c,
+      sys.user$ r
+   where
+      o.obj# = u.obj#
+   and c.obj# = u.obj#
+   and c.col# = u.intcol#
+   and o.owner# = r.user#
+   and o.name like '%${NAME}%';
+EOF

@@ -1,0 +1,32 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show ref count
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+TMP_FILE=/tmp/checkrefcount_$$.sql
+echo "set pages 0 verify off line 300 feed off echo off
+column line  format a40
+column a format 200
+spool $TMP_FILE
+select 
+    'select '''||table_name||':'' table_name, a.cnt cnta,b.cnt cntb from (select count(*) cnt from '||master_owner||'.'||master||') a, (select count(*) cnt from '||owner||'.'||name||') b where a.cnt<>b.cnt;' a
+from dba_snapshots order by 1;
+spool off
+" | sqlplus -s / >/dev/null 
+
+echo "Checking `cat $TMP_FILE|wc -l` snapshots, please wait..."
+sqlplus -s / <<EOF
+set pages 0 verify off line 300 feed off echo off
+col table_name for a30 trunc
+col cnta for 999,999,999
+col cntb for 999,999,999
+@$TMP_FILE
+EOF
+echo "************************************"
+echo "* Check Completed.                 *"
+echo "************************************"
+rm -f $TMP_FILE

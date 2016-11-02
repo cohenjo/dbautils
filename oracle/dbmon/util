@@ -1,0 +1,48 @@
+#! /usr/bin/sh
+#*************************************************************************
+#                                                                         
+# Script Name    : del_logs.sh
+# Purpose        : The script zips logs more than 1 day old then 
+#                  removes logs from /doravl01/oracle/dba/logs,  
+#                  /doravl01/oracle/dba/LOGS and /doravl01/oracle/adm/*/hot_bkup
+#                  directories that are more than x days old.
+# Usage          : del_logs days_old
+# Input          : Number of days since file modified.
+# Output         : 
+# Written by     : Steve Briggs
+# Date           : 07/04/2000
+#*************************************************************************
+
+CheckParams ()
+{
+
+usage_message="Usage: <$prog_name>  Days_Old \n\n"
+
+ if [ ${#*} -ne 1 ]
+ then
+    echo $usage_message
+    exit 1
+ fi
+
+ DAYS_OLD=$1
+# echo "DAYS_OLD=$DAYS_OLD"
+}
+
+#-------------
+#  Main
+#-------------
+
+prog_name=del_logs.sh
+CheckParams $1
+
+LOG_DIR_1="/doravl01/oracle/dba/logs"
+LOG_DIR_2="/doravl01/oracle/dba/LOGS"
+LOG_DIR_3="/doravl01/oracle/adm/*/hot_bkup/"
+
+# compress files more than 1 day old
+find $LOG_DIR_1/* $LOG_DIR_2/* $LOG_DIR_3/*.log* -mtime +1 -exec gzip {} \;
+
+# delete files more than 30 days old
+find $LOG_DIR_1/* $LOG_DIR_2/* $LOG_DIR_3/*.log* -mtime +$DAYS_OLD -exec rm {} \;
+
+exit

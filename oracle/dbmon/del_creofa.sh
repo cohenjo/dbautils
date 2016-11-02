@@ -1,0 +1,25 @@
+#!/bin/sh
+rm -rf /oravl01/oracle/adm/arc
+rm -rf /oravl01/oracle/adm/audit/
+rm -rf /oravl01/oracle/adm/bdump/
+rm -rf /oravl01/oracle/adm/cdump/
+rm -rf /oravl01/oracle/adm/cold_bkup/
+rm -rf /oravl01/oracle/adm/create/
+rm -rf /oravl01/oracle/adm/export/
+rm -rf /oravl01/oracle/adm/full_dump/
+rm -rf /oravl01/oracle/adm/hot_bkup/
+rm -rf /oravl01/oracle/adm/logs/
+rm -rf /oravl01/oracle/adm/udump/
+rm -rf /oravl01/oracle/adm/user_dump/
+rm -rf /oravl09/ORACLE/arc
+rm -rf /oravl09/ORACLE/audit/
+rm -rf /oravl09/ORACLE/bdump/
+rm -rf /oravl09/ORACLE/cdump/
+rm -rf /oravl09/ORACLE/cold_bkup/
+rm -rf /oravl09/ORACLE/create/
+rm -rf /oravl09/ORACLE/export/
+rm -rf /oravl09/ORACLE/full_dump/
+rm -rf /oravl09/ORACLE/hot_bkup/
+rm -rf /oravl09/ORACLE/logs/
+rm -rf /oravl09/ORACLE/udump/
+rm -rf /oravl09/ORACLE/user_dump/

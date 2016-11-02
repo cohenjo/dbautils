@@ -1,0 +1,38 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to pinpoint high undo activity
+#
+#  Sam Yeoman 2009
+#
+#*****************************************************************************
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+column username format a20
+column process format 999
+column osuser format a10
+column machine format a20 trunc
+column program format a40 trunc
+column tablespace format a10
+column name format a30
+column value for 999,999,999,999
+column MB for 999,999,999.99
+alter session set "_hash_join_enabled"=true;
+ 
+select * from 
+(
+        SELECT  s.username, s.sid, s.process, s.osuser, s.program, a.value,  round(NVL(a.value / 1024 / 1024, 0),2) MB
+        FROM v\$sesstat a, v\$session s
+        WHERE 
+            a.sid=s.sid
+        AND a.statistic# = 176  
+        ORDER BY a.value DESC
+)
+where rownum<25
+/
+EOF

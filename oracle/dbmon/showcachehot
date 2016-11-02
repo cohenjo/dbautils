@@ -1,0 +1,52 @@
+#!/bin/sh
+#***************************************************************************
+#
+#  This script is used to show all objects at the hot blocks # 
+#  USAGE: showcachehot # #  By Adi Zohar - Feb 2003
+#***************************************************************************
+
+#conn sys
+# create or replace view x_$bh as select 
+# ADDR,INDX,INST_ID,BUF#,HLADDR,NXT_HASH,PRV_HASH,NXT_REPL,PRV_REPL,FLAG,LRU_FLAG,
+# TS#,FILE#,DBARFIL,DBABLK,CLASS,STATE,MODE_HELD,CHANGES,CSTATE,X_TO_NULL,FORCED_READS,FORCED_WRITES,LE_ADDR,DIRTY_QUEUE,SET_DS,OBJ,BA,CR_SCN_BAS,CR_SCN_WRP,CR_XID_USN,CR_XID_SLT,CR_XID_SQN,CR_UBA_FIL,CR_UBA_BLK,CR_UBA_SEQ,CR_UBA_REC,CR_SFL,LRBA_SEQ,LRBA_BNO,HRBA_SEQ,HRBA_BNO,RRBA_SEQ,RRBA_BNO,US_NXT,US_PRV,WA_NXT,WA_PRV,TCH,TIM
+# from x$bh;
+# grant select on x_$bh to public;
+
+echo "
+set echo off feed off pages 0 lines 199 trimsp on verify off 
+select min(sleeps) from (
+	select sleeps 
+	from V\$latch_children
+	where name = 'cache buffers chains'
+	order by sleeps desc
+)
+where rownum<10;
+" | sqlplus -s "/ as sysdba" | read MIN_SLEEPS
+
+echo " =================================================================="
+echo " Show all hot blocks with sleeps < $MIN_SLEEPS (the top 10 sleeps) "
+echo " =================================================================="
+sqlplus -s "/ as sysdba" <<EOF
+set lines 132 pages 1000 trimspo on feed off 
+col segment_name for a30 
+col owner for a15 
+col sleeps for 999,999,999  
+
+select /*+ ordered */
+  e.owner, e.segment_name  segment_name,
+  sum(l.sleeps) sleeps
+from
+  V\$latch_children  l,
+  sys.x_\$bh x,
+  dba_extents  e
+where
+  l.name    = 'cache buffers chains' and
+  x.hladdr  = l.addr and
+  e.file_id = x.file# and
+  x.dbablk between e.block_id and e.block_id + e.blocks - 1
+  and l.sleeps >= $MIN_SLEEPS
+  group by owner,segment_name
+  order by 3 ;
+EOF
+echo ""
+exit

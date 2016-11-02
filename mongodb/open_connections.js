@@ -1,0 +1,1 @@
+db.currentOp(true).inprog.forEach(function (obj) { print(obj.client + ': ' + obj.ns); });

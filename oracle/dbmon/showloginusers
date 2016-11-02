@@ -1,0 +1,22 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed off
+column cnt for 999,999 
+select count(distinct login_name)  cnt
+from  
+    UAMS_WORK.UAMS_SESSION s,  
+    REFWORK.EMPLOYEE e 
+where  
+    to_date('01-01-1970','mm-dd-yyyy') + s.EXPIRATION/86400000 -10/24 > sysdate 
+    and e.login_name=s.uams_uid 
+;
+EOF

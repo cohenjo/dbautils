@@ -1,0 +1,76 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba/kchang/bin/showphyrds
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Adi Zohar (adizo@amdocs.com) SQL
+#  AUTHOR          : Kuen-Yih Chang (kchang@amdocs.com) shell
+#  DATE            : $Date: Tue Oct 29 16:33:33 CDT 2002 $
+#
+#  This script is used to check physical reads per second, and sending alert 
+#
+#  USAGE: showphyrds [ SID ] [ threashold ]
+#
+#*****************************************************************************
+
+typeset -i cnt=${1:-10000}
+typeset -u SID=`echo $2|cut -d. -f1`
+
+if [ ! -z "$SID" ]
+then
+	. ~/.profile
+	export ORACLE_SID=$SID
+	echo "Changing to $ORACLE_SID"
+	export ORAENV_ASK=NO
+	. oraenv
+fi
+
+export GROUP_MAIL=oracledba@sensis.com.au
+
+#-----------------------------------------------------
+# - Query for the screen                   
+#-----------------------------------------------------
+echo "
+set feed off echo off lines 199 pages 100 trimsp on 
+col PHY_SEC for 999,999,999
+col LOG_SEC for 999,999,999
+col PGA_MB for 999,999,999
+select 
+    sum(PHYSICAL_READS)/max((end_time-begin_time)*24*60*60) PHY_SEC, 
+    sum(LOGICAL_READS)/max((end_time-begin_time)*24*60*60) LOG_SEC, 
+    SUM(PGA_MEMORY/1024/1024) PGA_MB
+from v\$sessmetric;
+" | sqlplus -s "/ as sysdba" 
+
+#-----------------------------------------------------
+# - Check over limit and send e-mail
+#-----------------------------------------------------
+echo "
+set feed off echo off lines 199 pages 0 trimsp on 
+col PHY_SEC for 999999999
+col LOG_SEC for 999999999
+col PGA_MB for 999999999
+select 
+    sum(PHYSICAL_READS)/max((end_time-begin_time)*24*60*60) PHY_SEC, 
+    sum(LOGICAL_READS)/max((end_time-begin_time)*24*60*60) LOG_SEC, 
+    SUM(PGA_MEMORY/1024/1024) PGA_MB
+from v\$sessmetric;
+" | sqlplus -s "/ as sysdba" | read PHY_READ LOG_READ PGA
+
+typeset -i PHY_READ
+
+if [[ $PHY_READ -ge $cnt ]]
+then
+        LOG_FILE=/tmp/phy_$$.txt
+        
+	echo "WARNING: $sid phyrds exceeds threashold $cnt!! Sending alert to DBAs" >> $LOG_FILE
+	echo "Physical reads is currently $PHY_READ blocks per second, exceed threashold $cnt!! ">> $LOG_FILE
+	echo "Logical  reads is currently $LOG_READ !! ">> $LOG_FILE
+	echo "\n" >> $LOG_FILE
+	echo "Alert is sent to DBAs by script $0 from `hostname`">> $LOG_FILE
+
+	mailx -s "WARNING: phyrds = $PHY_READ bps on $ORACLE_SID " $GROUP_MAIL <$LOG_FILE
+	echo "Mail sent to $GROUP_MAIL "
+        rm -f $LOG_FILE
+fi
+

@@ -1,0 +1,48 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showindoubt
+#
+#  By Adi Zohar - Dec 2007
+#*****************************************************************************
+file_name=/tmp/kill_indoubt_transactions_$$.sql
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed off
+prompt **********************************************
+prompt * Indoubt Transactions                       *
+prompt **********************************************
+col trans_in_ktuxe for 99,999,999
+Select count(*) trans_in_ktuxe from X\$KTUXE where KTUXESTA='PREPARED' and KTUXECFL like '%REV%'; 
+
+Select local_tran_id, global_tran_id, state,  host from dba_2pc_pending where state='PREPARED';
+
+col LOCAL_TRAN_ID for a20
+col DATABASE for a30
+col INTERFACE for a20
+
+col dba_2pc_trans for 99,999,999
+select count(*) dba_2pc_trans FROM DBA_2PC_NEIGHBORS;
+
+prompt 
+prompt **********************************************
+prompt * To rollback or purge run the below         *
+prompt **********************************************
+EOF
+sqlplus -s "/ as sysdba" <<EOF >>/dev/null
+set pages 0
+spool $file_name
+set termout off
+prompt conn / as sysdba
+prompt set termout off
+prompt spool ${file_name}.log
+select 'ROLLBACK FORCE '''||LOCAL_TRAN_ID||'''; ' from DBA_2PC_NEIGHBORS;
+prompt spool off
+prompt exit
+spool off;
+
+EOF
+echo "File $file_name generated "

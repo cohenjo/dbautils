@@ -1,0 +1,55 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show what using temp tablespace 
+#
+#  Sam Yeoman 2009
+#
+#*****************************************************************************
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off echo off verify off pagesize 199 linesize 199 
+column username format a20 trunc
+column process format 999999
+column osuser format a15 trunc
+column machine format a20 trunc
+column program format a30 trunc
+column tablespace format a20
+column inst_id for 999 
+column mb format 999,999
+break on report
+compute sum of MB on report
+
+select /*+ use_hash(s,t) */ 
+    t.inst_id,
+    s.indx as sid, 
+    s.ksuudnam as username,
+    s.ksusepid as process, 
+    s.ksuseunm as osuser, 
+    s.ksusemnm as machine, 
+    s.ksusepnm as program, 
+    t.ktssotsn as tablespace,
+    (t.ktssoblks*8192/1024/1024) as MB 
+from sys.x\$ktsso t, x\$ksuse s
+where t.ktssoses=s.addr and t.ktssosno = s.ksuseser
+order by 9 desc;
+
+column TOTAL_MB format 9,999,999  heading "Total MB"
+column free format 9,999,999 heading "Free MB"
+column used format 9,999,999 heading "Used MB"
+
+select 
+        d.tablespace_name, 
+        NVL (a.bytes / 1024 / 1024, 0) TOTAL_MB,
+        (NVL (a.bytes / 1024 / 1024, 0) - NVL (t.bytes / 1024 / 1024, 0)) free,
+        NVL (t.bytes / 1024 / 1024, 0) used 
+          FROM sys.dba_tablespaces d,
+       (SELECT   tablespace_name, SUM(bytes) bytes FROM dba_temp_files GROUP BY tablespace_name) a,
+       (SELECT   tablespace_name, SUM(bytes_used  ) bytes FROM v\$temp_extent_pool GROUP BY tablespace_name) t
+ WHERE d.tablespace_name = a.tablespace_name(+)
+   AND d.tablespace_name = t.tablespace_name(+)
+   AND d.extent_management LIKE 'LOCAL'
+   AND d.contents LIKE 'TEMPORARY'
+   order by 1;
+
+EOF

@@ -1,0 +1,57 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show all datafiles for 8i
+#
+#  USAGE: showallfiles8i
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+sqlplus -s "/ as sysdba" <<EOF
+set line 160
+set pagesize 90
+set echo off
+set feedback off
+set verify off
+
+column name format a60
+column filename format a70
+column type format a5
+column bytes format 999.9
+column MB format 9,999,999
+column phywrts format 9,999,999
+column phyrds format 99,999,999
+column status for a3 truncate
+column tablespace_name format a30 Heading Tablespace
+column file_id for 999 head Id
+column AUTOEXTENSIBLE for a4 truncate head AUTO
+column MAXBYTES for 99,999 head MAX_GB
+
+break on report
+
+compute sum of MB on report
+
+(select file_id, substr(file_name,1,70) As filename  ,
+     bytes/1024/1024 As Mb,'data' as type,
+     tablespace_name , decode(AUTOEXTENSIBLE,'NO','',AUTOEXTENSIBLE) as AUTOEXTENSIBLE,
+     to_number(decode(AUTOEXTENSIBLE,'NO',null,MAXBYTES/1024/1024/1024)) as MAXBYTES
+from dba_data_files
+union
+select file_id, substr(file_name,1,70) As filename   ,
+     bytes/1024/1024 As Mb,'temp' as type,
+     tablespace_name, decode(AUTOEXTENSIBLE,'NO','',AUTOEXTENSIBLE) as AUTOEXTENSIBLE,
+     to_number(decode(AUTOEXTENSIBLE,'NO',null,MAXBYTES/1024/1024/1024)) as MAXBYTES
+from dba_temp_files)
+union
+select null as file_id, substr(a.member,1,70) as filename   , 
+        bytes/1024/1024 as Mb,'redo' as type,  
+        'REDO LOG' as tablespace_name, '' as AUTOEXTENSIBLE, to_number(null) as MAXBYTES
+from v\$logfile a, v\$log l 
+where a.group#=l.group#
+order by type,tablespace_name
+/
+column control format a70
+
+select name control from v\$controlfile;
+EOF

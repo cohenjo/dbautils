@@ -1,0 +1,68 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  USAGE: genautoextend tablespace_name [ON|OFF]
+#
+#*****************************************************************************
+
+typeset -u TABLESPACE_NAME=`echo $1|cut -d. -f1 | tr -A [a-z] [A-Z]`
+export FILE_NAME=$2
+typeset -u STATUS=`echo $3|cut -d. -f1  | tr -A [a-z] [A-Z]`
+
+if [ $# -lt 3 ]
+then
+   echo "\n Usage: $0 <TABLESPACE_NAME FS [ON|OFF]> \n"
+   echo " Example: $0 POOL_DATA oravl03 ON "
+   echo "          $0 % % ON "
+   exit 1
+fi
+
+TEMP_FILE=/tmp/genautoextend_$$.sql
+TEMP_FILE_LOG=/tmp/genautoextend_run_$$.sql
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+PROMPT
+select '--'||file_name||chr(10)||'alter database datafile '||file_id||' autoextend $STATUS '||decode('$STATUS','ON','next 100M maxsize unlimited;',';') from dba_data_files
+where tablespace_name not like '%UNDO%' and tablespace_name not in ('SYSTEM','SYSAUX','TEMP') 
+and tablespace_name like '$TABLESPACE_NAME' and file_name like '%$FILE_NAME%'
+order by tablespace_name;
+
+EOF
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "alter" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes changes to commit "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+typeset -u PARAM=`echo $4|cut -d. -f1`
+Local=$PARAM
+if [ -z "$PARAM" ]
+then
+	echo "Would you like to execute ? (Y/N) \c"; read Local
+fi
+
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | grep -v "12003" | grep -v "01432" | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors changes committed with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

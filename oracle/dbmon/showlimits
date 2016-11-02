@@ -1,0 +1,37 @@
+#!/usr/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show different limits
+#  Author: Dmitri Barkan, Nov 2008
+#
+#*****************************************************************************
+#####################################################################
+# Limit Details
+#####################################################################
+sqlplus -s "/ as sysdba" <<EOF
+set linesize 150 pagesize 1000 head off
+col highest_open_cur for 9999999999
+col max_open_cur for a15
+        prompt ***************************************************
+        select instance_name ||'@' ||host_name  info from gv\$instance;
+set head on
+
+        prompt *******************************************************************
+        prompt * Open Cursors details
+        prompt *******************************************************************
+                select max(a.value) as highest_open_cur, p.value as max_open_cur
+                from v\$sesstat a, v\$statname b, v\$parameter p
+                where a.statistic# = b.statistic#
+                and b.name = 'opened cursors current'
+                and p.name= 'open_cursors'
+                group by p.value
+                /
+        prompt *******************************************************************
+        prompt * Resource Limits Details
+        prompt *******************************************************************
+                select resource_name,current_utilization cur_util, max_utilization max_util,initial_allocation init,limit_value limit
+                from v\$resource_limit
+                where limit_value not like '%UNLIM%'
+                and limit_value not like '% 0'
+                /
+EOF

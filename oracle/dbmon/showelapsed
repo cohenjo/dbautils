@@ -1,0 +1,13 @@
+#!/bin/sh
+sqlplus -s dba_stats/dba_stats@oprss1 <<EOF
+col SEGMENT_NAME for a30
+set feed off tab off
+set pages 100
+col MB for 9999.99
+select to_char(connection_time,'DD/MM HH24:MI') time,elapsed,db from dba_stats.STAT_PROD_CONNECT_TIME 
+where connection_time>trunc(sysdate)-20 and elapsed>5
+order by connection_time
+/
+exit
+EOF
+

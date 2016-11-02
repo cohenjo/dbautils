@@ -1,0 +1,32 @@
+#!/bin/ksh 
+
+#######################################################################
+# Sam Yeoman 2009
+# Script: showlong
+# Description: show long_ops for sql id
+#######################################################################
+
+############################################
+# Show usage
+############################################
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ]
+then
+  echo "showlong SID"
+  exit 1
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set pages 200 feedback off lines 200 trims on
+col username format a16
+col message format a82 trunc
+col START_TIME format a16
+col LAST_UPDATE format a16
+col Percent format 999.99
+
+select sid, username, to_char(start_time,'DD-MON HH24:MI:SS') START_TIME, to_char(last_update_time,'DD-MON HH24:MI:SS') LAST_UPDATE, message, DECODE (totalwork,0, 0,ROUND (100 * sofar / totalwork, 2)) "Percent"
+from v\$session_longops
+where qcsid = '$NAME'
+order by DECODE (totalwork,0, 0,ROUND (100 * sofar / totalwork, 2)) desc, last_update_time ;
+
+EOF

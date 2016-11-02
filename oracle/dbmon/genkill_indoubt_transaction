@@ -1,0 +1,56 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all invalid objects and compile them 
+#
+#  USAGE: showcompile
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+export TEMP_FILE=/tmp/genkill_indoubt_$$.sql
+export TEMP_FILE_LOG=/tmp/genkill_indoubt_log_$$.sql
+echo "set termout off trimspo on lines 199 feed off pages 0 echo off
+spool $TEMP_FILE
+select 'force rollback '''||local_tran_id||''';' from dba_2pc_pending where state <>'forced rollback';
+spool off
+" | sqlplus -s "/ as sysdba" > /dev/null
+
+#--------------------------------------------------------------------------------------------
+head -n 10 $TEMP_FILE
+echo "..."
+
+num_of_changes=`grep -i "rollback" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes session to kill "
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+export PARAM=$1 
+Local=$PARAM
+if [ -z "$PARAM" ]
+then
+	echo "Would you like to execute ? (Y/N) \c"; read Local
+fi
+
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on time on timing on 
+	spool $TEMP_FILE_LOG
+        set term off
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_success=`grep -i "rollback" $TEMP_FILE_LOG  | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_success sessions killed successfully "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

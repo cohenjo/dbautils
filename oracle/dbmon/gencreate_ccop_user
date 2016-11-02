@@ -1,0 +1,23 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+typeset -u USER=`echo $1|cut -d. -f1`
+if [ -z "$USER" ] 
+then
+  echo "User must be provided: \c"; read USER
+fi
+
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+CREATE USER $USER   IDENTIFIED BY ${USER}_CCOP   DEFAULT TABLESPACE POOL_DATA   TEMPORARY TABLESPACE TEMP;
+GRANT UNLIMITED TABLESPACE, CONNECT, RESOURCE TO $USER ;
+ALTER USER $USER DEFAULT ROLE ALL;
+GRANT create any job to CTXAPP;
+GRANT CTXAPP to $USER;
+EOF

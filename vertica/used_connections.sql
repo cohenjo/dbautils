@@ -1,0 +1,1 @@
+select (select 100*count(*) from sessions)/(SELECT current_value FROM CONFIGURATION_PARAMETERS where parameter_name='MaxClientSessions');

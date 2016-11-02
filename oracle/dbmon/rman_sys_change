@@ -1,0 +1,71 @@
+#!/bin/ksh -f
+
+######################################################################
+# Script:    rman_sys_change
+# Author:    Huyen Pham
+#
+#######################################################################
+
+#=====================================================================#
+# Print script usage
+#=====================================================================#
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` <DB_NAME> <SYS_PASSWORD> <RMAN_PASSWORD>"
+ echo "Example: change_rman_sys all/iamut4 sys123 rman123"
+ echo "}\n"
+ printf "\n"
+}
+
+#=====================================================================#
+# Change SYS password inside RMAN backup specification
+#=====================================================================#
+ChangeSysPassword()
+{
+   export ORACLE_SID=$db
+   . oraenv
+   echo "Changing SYS password inside RMAN backup for ${ORACLE_SID}"
+   /opt/omni/lbin/util_oracle8.pl -config -dbname ${ORACLE_SID} -orahome ${ORACLE_HOME} -prmuser sys -prmpasswd ${SYS_PASSWORD} -prmservice ${ORACLE_SID} -rcuser RMAN_USER -rcpasswd ${RMAN_PASSWORD} -rcservice RMAN10
+}
+#########################################################################
+# MAIN
+# 
+#########################################################################
+
+export OK=0
+export ERROR=1
+
+export SUF=$1
+export SYS_PASSWORD=$2
+export RMAN_PASSWORD=$3
+
+export ORAENV_ASK=NO
+export OMNI_BIN_DIR=/opt/omni/lbin
+cd $OMNI_BIN_DIR
+
+if [ $# -ne 3 ]
+then
+   echo "Usage:  $0 all/erdiam sys123 rman123"
+   exit $ERROR
+fi
+
+if [ "$SUF" = "all" ]
+then
+    sidList=`awk 'BEGIN {FS=":"} {if ($3=="Y")  { print $1 }} ' /etc/oratab `
+else
+    sidList=`awk 'BEGIN {FS=":"} {if ($3=="Y")  { print $1 }} ' /etc/oratab | grep -i "$SUF" `
+    if [ "$sidList" = "" ]
+    then
+        echo "$SUF is invalid DB_NAME"
+        exit $ERROR
+    fi
+fi
+
+for db in `echo $sidList`
+do
+     echo $db
+     ChangeSysPassword
+done
+
+

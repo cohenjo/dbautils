@@ -1,0 +1,335 @@
+#!/bin/sh
+
+export SCRIPT_DIR=/oravl01/oracle/adm/${ORACLE_SID}/create/index
+export PARALLEL_BUILD_INDEX=48
+mkdir -p $SCRIPT_DIR
+
+#-----------------------------------------
+# Usage
+#-----------------------------------------
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -full               [num_files=1]     | All database"
+ echo " -schema  [username] [num_files=1]     | Whole Schema"
+ echo " -table   [username] [table]           | One Table"
+ echo " -screen  [username] [table] [ONLY_PK] | One Table to Screen"
+ echo ""
+ exit 0
+}
+
+#------------------------------------------------------------------------------
+# Generate Index Script
+#------------------------------------------------------------------------------
+Generate_Ind_Script()
+{
+	OWNER=$1
+	TABLE_NAME=$2
+	SCRIPT=$3
+	IND_SCRIPT=/tmp/ind_${OWNER}.${TABLE_NAME}_$$.sql
+	NOLOG_SCRIPT=/tmp/nolog_${OWNER}.${TABLE_NAME}_$$.sql
+	TMP_SCRIPT=/tmp/org_ind_${OWNER}.${TABLE_NAME}_$$.sql
+
+	echo "set echo off feed off pages 0 lines 2000 trimsp on long 40000
+		col stmt for a40000
+		EXEC DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM,'STORAGE',false);
+		EXEC DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM,'SQLTERMINATOR',true);
+
+		spool $IND_SCRIPT
+		select DBMS_METADATA.GET_DEPENDENT_DDL('INDEX','$TABLE_NAME','$OWNER') stmt from dual;
+
+		spool $NOLOG_SCRIPT
+		select '  ALTER INDEX '||owner||'.'||index_name||' NOPARALLEL LOGGING;' stmt from all_indexes i where owner='${OWNER}' and table_name='${TABLE_NAME}' and index_type not in ('DOMAIN','FUNCTION-BASED DOMAIN') order by 1;
+		select '  ALTER INDEX '||owner||'.'||index_name||' NOPARALLEL ;' stmt from all_indexes i where owner='${OWNER}' and table_name='${TABLE_NAME}' and index_type in ('DOMAIN','FUNCTION-BASED DOMAIN') order by 1;
+		spool off
+
+		prompt Generate all Constraints on Table
+		spool $CONS_SCRIPT
+		select DBMS_METADATA.GET_DEPENDENT_DDL('CONSTRAINT','$TABLE_NAME','$OWNER') stmt from dual;
+		spool off
+" | sqlplus -s ${ORA_USER}/${ORA_PASS} >>/dev/null
+
+	# add parallel and remove compute statistics from the index script
+        cat $IND_SCRIPT | \
+        sed -e 's/NOPARALLEL//' -e 's/PARALLEL ../ /' -e 's/NOLOGGING//' -e 's/ LOGGING//'  -e 's/COMPUTE STATISTICS//' \
+            -e 's/PCTFREE 10 INITRANS 2 MAXTRANS 255 //' | \
+        sed '/CREATE/{N;s/\n//;}' | \
+        sed '/\"SYS_IL/,/;/d' | \
+        sed '/^ *$/d' | \
+        #sed ' /^$/{N; /^\n$/D; }' | \
+        sed "/CREATE/{/CONTEXT/!s/$/ PARALLEL $PARALLEL_BUILD_INDEX NOLOGGING /;}" | \
+        sed "/SECTION GROUP ctxsys/{/)/s/)/) PARALLEL $PARALLEL_BUILD_INDEX /;}" | \
+        sed "s/SO_DATA2/SO_DATA/g"| \
+        sed "s/LOCAL PARALLEL $PARALLEL_BUILD_INDEX NOLOGGING/PARALLEL $PARALLEL_BUILD_INDEX NOLOGGING LOCAL/" >> $SCRIPT
+
+	echo "" >>$SCRIPT
+	cat $NOLOG_SCRIPT >> $SCRIPT
+	echo "" >>$SCRIPT
+
+        #-----------------------------------------
+        # Order the commands, PK first    
+        #-----------------------------------------
+	echo "------------------------------------------" >$TMP_SCRIPT
+	echo "-- ${OWNER}.${TABLE_NAME}" >>$TMP_SCRIPT
+	echo "------------------------------------------" >>$TMP_SCRIPT
+
+        echo "" >> $TMP_SCRIPT
+        echo "-- PK First" >>$TMP_SCRIPT
+        echo "" >> $TMP_SCRIPT
+        cat $SCRIPT | sed -n '/CREATE.*_PK/,/;/p' >> $TMP_SCRIPT
+        echo "" >> $TMP_SCRIPT
+        cat $SCRIPT | grep "ALTER INDEX" |grep "_PK" >> $TMP_SCRIPT
+
+        #----------------------------------------
+	# Fix the PK constraint
+        #----------------------------------------
+        echo "set echo off lines 199 trimsp on pages 0 feed off
+        select index_name from dba_constraints where table_name='$TABLE_NAME' and owner='$OWNER' and constraint_type='P';
+" | sqlplus -s ${ORA_USER}/${ORA_PASS} | read PK_INDEX_NAME
+
+        #------------------------------------------------------
+        # if index name > 30 chars (some time in alfresco)
+        #------------------------------------------------------
+        if (( ${#TABLE_NAME} > 27 ))
+        then
+                CONS_NAME=$PK_INDEX_NAME
+        else
+                CONS_NAME=${TABLE_NAME}_PK
+        fi
+
+
+        if [ -z "$PK_INDEX_NAME" ]
+        then
+                echo "" > /dev/null
+        else
+	       PKCOL=`grep $PK_INDEX_NAME $IND_SCRIPT | grep UNIQUE | awk -F\( '{ print $2 }' | awk -F\) '{ print $1 }'`
+               if [ -z "${PKCOL}" ]
+               then
+                      echo "-- no PK "> /dev/null
+               else
+                      echo "" >> $TMP_SCRIPT
+                      echo "   -- Check if PK index exist before adding pk constraint" >> $TMP_SCRIPT
+                      echo "  WHENEVER SQLERROR EXIT" >> $TMP_SCRIPT
+                      echo "  ALTER INDEX ${OWNER}.$PK_INDEX_NAME NOPARALLEL;" >> $TMP_SCRIPT
+                      echo "  WHENEVER SQLERROR CONTINUE" >> $TMP_SCRIPT
+                      echo "" >> $TMP_SCRIPT
+	              echo "  ALTER TABLE ${OWNER}.${TABLE_NAME} ADD CONSTRAINT $CONS_NAME PRIMARY KEY (${PKCOL}) USING INDEX;" >>$TMP_SCRIPT
+               fi
+        fi
+
+	\rm -f $IND_SCRIPT
+	\rm -f $NOLOG_SCRIPT
+
+        #-----------------------------------------
+        # if only PK, don't include the IX 
+        #-----------------------------------------
+        if [ ! "$ONLY_PK" = "ONLY_PK" ]
+        then
+                echo "" >>$TMP_SCRIPT
+                echo "-- IX" >>$TMP_SCRIPT
+                echo "" >>$TMP_SCRIPT
+                cat $SCRIPT | sed '/CREATE.*_PK/,/;/d' | sed '/ALTER INDEX.*_PK/,/;/d' >> $TMP_SCRIPT
+        fi
+        cat $TMP_SCRIPT | sed ' /^$/{N; /^\n$/D; }' > $SCRIPT
+        \rm -f $TMP_SCRIPT
+}
+
+#----------------------------------------
+# Fix Special Index
+#----------------------------------------
+FixSpecialIndex()
+{
+        OWNER=$1
+        TABLE_NAME=$2
+        SCRIPT_DIR=$3
+        SCRIPT_BASE=$4
+        SCRIPT_RUN=$5
+        SPECIAL=$6
+
+        if [ -a /tmp/*_$$_${OWNER}.${TABLE_NAME}.sql ] 
+        then
+                FNAME=${SCRIPT_DIR}/${SCRIPT_BASE}_${SPECIAL}     
+                SNAME=${SCRIPT_BASE}_${SPECIAL}
+
+                rm -f ${FNAME}.sql
+                echo "set time on timing on echo on term off">>${FNAME}.sql
+                echo "spool ${SNAME}.log ">>${FNAME}.sql
+                cat /tmp/*_$$_${OWNER}.${TABLE_NAME}.sql >>${FNAME}.sql
+                \rm -f /tmp/*_$$_${OWNER}.${TABLE_NAME}.sql
+                echo "spool off ">>${FNAME}.sql
+		echo "${FNAME}.sql"
+		echo "sqlplus -s / @${SNAME}.sql &" >>$SCRIPT_RUN
+	fi
+}
+
+#--------------------------------------------------------------------
+# Export Indexes
+#--------------------------------------------------------------------
+ExportIndexes()
+{
+	export SCRIPT_BASE=index_${ORACLE_SID}.${BASE_NAME}
+	export SCRIPT_RUN=${SCRIPT_DIR}/${SCRIPT_BASE}.sh
+
+	if [ -z "$NUM_FILES" ]
+	then
+		NUM_FILES=1
+	fi
+
+
+	cyc=1
+	cur_file=1
+	echo "set echo off feed off lines 199 trimsp on pages 0
+		select distinct owner, table_name from dba_indexes 
+		where (owner like '%WORK%' or owner like 'REF_APPL%')
+		and owner like '$OWNER_INP'
+		and table_name not like 'DR$%'
+		and table_name not like 'MLOG$%'
+		and table_name not like 'RUPD%'
+		and table_name like '$TABLE_INP'
+		order by 1,2;
+" | sqlplus -s / | while read TABLE_OWNER TABLE
+	do
+		# Run parallel processes
+		while true
+		do
+			if [ `jobs | grep -i running | wc -l` -gt 50 ]
+			then
+					sleep 5
+					echo "waiting..."
+			else
+				# Check current file
+				(( cur_file = cyc%${NUM_FILES} + 1 ))
+				TEMP_SCRIPT=/tmp/${cur_file}_$$_$TABLE_OWNER.$TABLE.sql
+				echo "$cyc $TABLE_OWNER.$TABLE"
+
+				Generate_Ind_Script $TABLE_OWNER $TABLE $TEMP_SCRIPT &
+				(( cyc = cyc +1 ))
+				break;
+			fi
+		done
+	done
+	echo "waiting.."
+	wait
+
+	#------------------------------------------------------------------
+	# Fix the files
+	#------------------------------------------------------------------
+	echo "************************************************"
+	echo "* Files created:                               *"
+	echo "************************************************"
+	if (( $NUM_FILES > 1 )) 
+	then
+		echo '#!/bin/sh' >>$SCRIPT_RUN
+		echo "$SCRIPT_RUN"
+
+                #-------------------------------------------------
+                # move big indexes to special files    
+                #-------------------------------------------------
+                FixSpecialIndex ACMS_WORK ACMS_CONTENT $SCRIPT_DIR $SCRIPT_BASE $SCRIPT_RUN A
+                FixSpecialIndex ACMS_WORK ACMS_DELV_BC_ADVERTISING $SCRIPT_DIR $SCRIPT_BASE $SCRIPT_RUN B
+                FixSpecialIndex AAM_WORK  AAM_CONTACT $SCRIPT_DIR $SCRIPT_BASE $SCRIPT_RUN C
+                FixSpecialIndex AAM_WORK  AAM_ADVERTISER $SCRIPT_DIR $SCRIPT_BASE $SCRIPT_RUN D
+        fi
+
+	cyc=0
+	while true
+	do
+		(( cyc = cyc +1 ))
+		if (( $cyc > $NUM_FILES ))
+		then
+			break;
+		fi
+
+                # if one file, have normal script name
+                if (( $NUM_FILES > 1 ))
+                then
+                        FNAME=${SCRIPT_DIR}/${SCRIPT_BASE}_${cyc}
+                        SNAME=${SCRIPT_BASE}_${cyc}
+                else
+                        FNAME=${SCRIPT_DIR}/${SCRIPT_BASE}
+                        SNAME=${SCRIPT_BASE}
+                fi
+
+                rm -f ${FNAME}.sql
+                echo "set time on timing on echo on term off">>${FNAME}.sql
+                echo "spool ${SNAME}.log ">>${FNAME}.sql
+		cat /tmp/${cyc}_$$*.sql >>${FNAME}.sql
+                echo "spool off ">>${FNAME}.sql
+		echo "${FNAME}.sql"
+
+		# -- add to script run
+		if (( $NUM_FILES > 1 )) 
+		then
+			echo "sqlplus -s / @${SNAME}.sql &" >>$SCRIPT_RUN
+		fi
+	done
+
+	if (( $NUM_FILES > 1 )) 
+	then
+		echo "wait " >>$SCRIPT_RUN
+	        echo " grep ORA- ${SCRIPT_BASE}*.log | grep -v "ORA-00955" | grep -v "ORA-02260" | grep -v "ORA-01418" | grep -v ORA-01408" >>$SCRIPT_RUN
+        fi
+
+	\rm -f /tmp/*_$$*.sql
+}
+
+#--------------------------------------------------------------------
+# Main
+#--------------------------------------------------------------------
+if [ $# -lt 1 ]
+then
+	Usage
+	exit 1
+fi
+
+export OWNER_INP="%"
+export TABLE_INP="%"
+export ONLY_PK=""
+case $1 in
+    -full		) 
+					export NUM_FILES=$2
+					export BASE_NAME="DB"
+					ExportIndexes
+				;;
+    -schema		) 
+					if [ $# -lt 2 ]
+					then
+						Usage
+					fi
+					typeset -u OWNER_INP=`echo $2|cut -d. -f1`
+					export BASE_NAME="$OWNER_INP"
+					export NUM_FILES=$3
+					ExportIndexes 
+				;;
+
+    -screen		) 
+					if [ $# -lt 3 ]
+					then
+						Usage
+					fi
+					typeset -u OWNER_INP=`echo $2|cut -d. -f1`
+					typeset -u TABLE_INP=`echo $3|cut -d. -f1`
+					export ONLY_PK=$4
+                                        TEMP_SCRIPT=/tmp/gen_ind_$$.sql
+					Generate_Ind_Script $OWNER_INP $TABLE_INP $TEMP_SCRIPT
+                                        cat $TEMP_SCRIPT
+                                        rm -f $TEMP_SCRIPT
+					;;
+    -table		) 
+					if [ $# -lt 3 ]
+					then
+						Usage
+					fi
+					typeset -u OWNER_INP=`echo $2|cut -d. -f1`
+					typeset -u TABLE_INP=`echo $3|cut -d. -f1`
+					export BASE_NAME="${OWNER_INP}.${TABLE_INP}"
+					export NUM_FILES=1
+					ExportIndexes
+					;;
+
+	 *			) echo "Error: Wrong flag"
+			 	  Usage
+			      exit $ERROR 
+				  ;;
+esac

@@ -1,0 +1,25 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 190 feed off
+col USN for 9999
+col SLT for 9999
+col SEQ for 999,999,999
+col UNDOBLOCKSDONE for 999,999,999
+col UNDOBLOCKSTOTAL for 999,999,999
+col now for a30
+col mb for 999,999,999
+col PID for 999999
+col PERC for 999
+select USN, SLT, SEQ, STATE, UNDOBLOCKSDONE, UNDOBLOCKSTOTAL, PID, UNDOBLOCKSDONE/UNDOBLOCKSTOTAL*100 PERC from v\$fast_start_transactions;
+
+select to_char(sysdate,'DD/MM/YYYY HH24:MI:SS') now, trunc(sum(UNDOBLOCKSTOTAL -UNDOBLOCKSDONE)*8192/1024/1024) MB from v\$fast_start_transactions where state='RECOVERING';
+EOF

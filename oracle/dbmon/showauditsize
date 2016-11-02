@@ -1,0 +1,40 @@
+#!/bin/ksh
+. ~/.profile
+echo "                              Current   Current  Per Day     Per Year Per Year   Audit TS Increase"
+echo "INSTANCE_NAME      Total Rows    Days Size (MB)     Rows         Rows     (MB) Space (MB)  By (MB) Run Out By"
+echo "---------------- ------------ ------- --------- -------- ------------ -------- ---------- -------- ------------"
+for sid in `awk 'BEGIN {FS=":"} {if ($3=="Y" && $1!="*")  { print $1 }} ' /etc/oratab  `
+do
+export ORACLE_SID=$sid
+sqlplus -s "/ as sysdba" <<*EOF*
+set pages 0 lines 199 trimsp on echo off feed off
+col tot_rows for 999,999,999 head "Total Rows"
+col days for 999 head "Current|Days"
+col curr_mb for 99,999 head "Current|Size (MB)"
+col rows_per_day for 999,999 head "Per Day|Rows" 
+col rows_per_year for 999,999,999 head "Per Year|Rows" 
+col yearly_plus_growth_mb for 99,999 head "Per Year|(MB)"
+col audit_ts_size for 99,999 head "Audit TS|Space (MB)"
+col increase_by for 9,999 head "Increase|By (MB)"
+col will_run_out_at for a12 head "Run Out By"
+
+select INSTANCE_NAME,
+	   tot_rows,
+	   days,
+	   ds.bytes/1024/1024 CURR_MB, 
+	   trunc(tot_rows/days) rows_per_day,
+	   trunc(tot_rows/days*365) rows_per_year,
+	   trunc((ds.bytes/1024/1024)*365/days*1.20) yearly_plus_growth_mb,
+	   dt.audit_ts_size,
+	   (case when dt.audit_ts_size> trunc((ds.bytes/1024/1024)*365/days*1.20) then 0 else trunc((ds.bytes/1024/1024)*365/days*1.20)-dt.audit_ts_size end) increase_by,	   	
+	   (case when dt.audit_ts_size> trunc((ds.bytes/1024/1024)*365/days*1.20) then '-' else to_char(sysdate + trunc(dt.audit_ts_size/((ds.bytes/1024/1024)/days*1.20))-days,'DD/MM/YYYY')||' *' end) will_run_out_at
+from 
+	(select trunc(max(timestamp#)-min(timestamp#)) DAYS, count(*) tot_ROWS from sys.aud\$) aud,	 
+	 v\$instance,
+	 dba_segments ds,
+	(select sum(bytes)/1024/1024 audit_ts_size from dba_data_files where tablespace_name like '%AUDIT%') dt
+where
+	 ds.owner='SYS' and
+	 ds.segment_name='AUD$' ;
+*EOF*
+done

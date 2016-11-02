@@ -1,0 +1,8 @@
+#!/bin/sh
+
+. /oravl01/oracle/.profile > /dev/null
+
+export ORACLE_SID=$1
+echo "
+ALTER DATABASE REGISTER LOGICAL LOGFILE '$2';
+" | sqlplus -s "/ as sysdba" 

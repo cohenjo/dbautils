@@ -1,0 +1,127 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show free space at the end of each file
+#
+#  USAGE: showfullscan (optional SID)
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+#######################################
+# Usage
+#######################################
+Usage()
+{
+ printf "\n"
+ echo "Usage: { `basename $0` "
+ echo " -a                | Show progress for all instance"
+ echo " -h                | Help"
+ echo " -s     SID        | Show progress per SID"
+ echo " -p     SID        | Show progress per SID and Slaves (for parallel queries)"
+ echo " -i     SID        | Show progress per SID without completed"
+ echo "       }\n"
+ printf "\n"
+}
+
+#######################################
+# Run the query
+#######################################
+run_query()
+{
+sqlplus -s ${USHOW}/${PSHOW} <<EOF
+col SID format 99999
+col type format a7 head "Type"
+col username format a14 trunc head "DB User"
+col machine format a20 trunc head "Machine"
+col ctime for a12 head "Connect Time"
+col Percent for 999.99 head "%Done"
+col Message format a95 trunc
+set pages 200 lines 199 trimsp on feed off
+SELECT /*+ RULE */ 
+	s.SID,
+        s.TYPE "Type", 
+	s.username , 
+	s.machine "Machine", 
+        to_char(s.logon_time,'DD-MON HH24:MI') ctime, 
+	DECODE (vp.totalwork,0, 0,ROUND (100 * vp.sofar / vp.totalwork, 2)) "Percent",
+        vp.MESSAGE "Message"
+FROM v\$session s, v\$session_longops vp
+WHERE s.SID = vp.SID $STATUS_WHERE $SID_WHERE 
+order by 6,1 desc;
+EOF
+echo ""
+}
+
+
+#########################################################################
+# MAIN
+#########################################################################
+if [ $# -eq 0 ]
+then Usage
+	exit $OK
+fi 
+
+# Get SID
+# -----------------------------------
+typeset -u SID=`echo $2|cut -d. -f1`
+
+if [ ! -z "$SID" ] 
+then
+  export SID_WHERE="and s.sid=$SID"
+fi
+
+# Check the parameters
+# ------------------------
+case $1 in
+    -a   ) export SID_WHERE="" ;;
+    -s   ) 
+		if [ -z "$SID" ] 
+		then
+			echo "Error: Wrong flag"
+			Usage
+			exit 1
+		fi
+		export SID_WHERE="and s.sid=$SID" 
+		;;
+    -p   ) 
+		if [ -z "$SID" ] 
+		then
+			echo "Error: Wrong flag"
+			Usage
+			exit 1
+		fi
+		export SID_WHERE="and s.sid in (select sid from v\$px_session where QCSID=${SID}) "
+		;;
+    -i   ) 
+		if [ -z "$SID" ] 
+		then
+			echo "Error: Wrong flag"
+			Usage
+			exit 1
+		fi
+		export SID_WHERE="and s.sid in (select sid from v\$px_session where QCSID=${SID}) "
+		;;
+     *   ) echo "Error: Wrong flag"
+           Usage
+           exit 1
+           ;;
+esac
+
+if [ "$1" = "-i" ]
+then 
+        echo ""
+else
+        echo "*****************"
+        echo "*   Completed   *"
+        echo "*****************"
+        export STATUS_WHERE="and vp.sofar>=vp.totalwork"
+        run_query
+fi
+echo "*****************"
+echo "* Not Completed *"
+echo "*****************"
+export STATUS_WHERE="and vp.sofar<vp.totalwork"
+run_query
+exit
+

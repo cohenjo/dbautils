@@ -1,0 +1,16 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show xmldb ports
+#
+#  USAGE: showxmldb
+#
+#  By Adi Zohar - June 2007
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 90 verify off line 132 feed off
+column ftp_port format 99999
+column htpp_port format 99999
+select dbms_xdb.getftpport as ftp_port, dbms_xdb.gethttpport as http_port from dual;
+EOF

@@ -1,0 +1,265 @@
+[H[J************************************************************************************************************
+* showshows                                                                                                *
+*                                                                                                          *
+* Updated by Adi Zohar                                                                                     *
+*                                                                                                          *
+* Updated 12/11/2008                                                                                       *
+************************************************************************************************************
+
+* General Checks
+*--------------------------------------------------------------------------------------
+chk_unsecure_passwords                                Check unsecure oracle default passwords
+check_alt_user_password.sh                            Check passwords incorrect or missing from password file
+chkdblinks                                            Check DBLinks
+chkdblinks_autoconn                                   Check DBLinks with Auto Connect
+chksyns                                               Check Synonyms
+dist_hpi                     file_name                Distribute file to all machines (from suito2)
+gzexp                                                 exp + gzip
+gzimp                                                 gunzip + imp
+part_exp                     owner and table name     export partition table fast
+part_imp                     owner and table name     import partition table fast
+showimp2sql                  log_file                 convert imp log file to sql statements
+showlvsize                   vg name                  show all logical volumes / raw devices per volume group
+                                                     
+* Create Scripts                                     
+*--------------------------------------------------------------------------------------------
+cre_dbmon_gzip.sh                                     Create gzipped dbmon directory
+cre_developer_role.sh                                 Create developer role
+cre_show_cache_obj_view.sh                            Create show_cache_obj_view 
+cre_show_lock_pkg.sh                                  Create show_lock_pkg on sys 
+
+* Run Scripts
+*--------------------------------------------------------------------------------------
+run_shell_alldb              all/db suffix shellscript  run shell script on specified databases
+run_sql_alldb                all/db suffix sqlcommand   run sql command on specified databases
+run_sqlscript_alldb          all/db suffix sqlscript    run sql script on specified databases 
+exp_in_parallel              db/datfile/numproc/expdir  export tables based on dat file in parallel 
+imp_in_parallel              db/datfile/numproc/expdir  import tables based on dat file in parallel  
+fix_local_manage_tbs.sh                                 Fix Local Manage Tablespace for 9i
+
+* Generate scripts                                                         
+*-----------------------------------------------------------------------------------------
+gentruncateuser              username                 generate truncate script for user
+genkilluser                  username                 generate kill user script per user
+genkillsession               session_id               generate kill session script 
+genconsdisable               username                 generate disable and enable constraint per user
+genconsenable                username                 generate enable and enable constraint per user
+gencreatesynonym             username, syn_owner      generate create synonym for synonym_owner
+gencreatepubsynonym          syn_owner                generate create public synonym for synonym_owner
+gendropsynonym               username, syn_onwer      generate drop synonym which point to synonym owner
+gendropindexes               username                 generate drop indexes
+gendropmlog                  username                 generate drop mlog for an owner
+genshrinkrbs                                          generate shrink rbs for all rbs to 10m
+gengranttorole               username, privs, role    generate grant privs to role owner (table only) 
+gensnap                      username, snap, src_snap generate grant privs to role owner (table only) 
+gensnaplog                   username, snap           generate snapshot log script  
+gentruncate_snaplog          username
+gentab_iniequnext_ext        tablespace_name          generate script to move and rebuild table and indexes for initial extent will be the same of next - for uniform
+genmove_tsps                 tablespace, dest_tsps    generate script to move objects from tablespace to another tablespace.
+genmove_table                owner table,dest_tsps    generate move table scritp
+gentsps_resize               tablespace, size         generate sql command for resizing datafile
+gentsps_quota                tablespace               generate quota assign for all user           
+gen_noparallel_logging                                generate logging and noparallel for object with parallel and nologging
+genremovedb                                           generate scripts to remove all database files
+showdb_environment                                    generate database environment
+gendblinks_script                                     generate dblinks script for the database
+genautoextend                tspace, fs [ON/OFF]      generate script to turn autoextend on/off for tablespace/s         
+
+                                               
+* Database Statistics and parameters                                                                       
+*-----------------------------------------------------------------------------------------
+show8locks                                            show instances locks - use show_lock_pkg
+show8wait                                             show instances waits - use show_lock_pkg
+showanalyze                                           show analyze statistics
+showauditsize                                         show audit size stats
+showbackup                                            show database hot backup status      
+showbcvstat                                           show sync status for bcv
+showcacheobj                                          show cache objects at buffer cache
+showcachehot                                          show hot objects at buffer cache
+showdir                                               show directories (for data pump)
+showelapsed                                           show elapsed connections statistics for YPGPR1
+showgrowthIgen                                        show database growth (production statistics) - IGEN
+showgrowth                                            show database growth (production statistics)
+showgrowthexcel                                       show database growth like excel (production statistics)
+showgrowthexceltable        DB SIZE                   show database growth like excel (production statistics)
+showphyrds                                            show physical reads per instance
+showparams                  param                     show parameters including hidden
+showinst                                              show all instances on machine
+showparallel                                          show parallel queries
+showpost                    process_id                show post client information
+showsga                                               show sga statistics
+showpga                                               show pga cache hit percentage statistics
+showpriv                                              show system priviliges
+showsgastat                                           show sga statistics
+showshow                                              This Help
+showshow.doc                                          This File
+showsqlarea                                           show sga statistics
+showstats                                             show statistics
+showsysevents                                         show system events
+                                                      
+* Showshow for 10G                                    
+*-------------------------------------------------------------------------------------------------------
+showflash                                             show flashback activity
+showrac                                               show rac information
+showsby                                               show standby database information
+showcdc                                               show cdc information
+                                                      
+* Database Sessions                                                                                                          
+*--------------------------------------------------------------------------------------------------------
+showclients                                           show all sessions by client
+showprocess                 pid                       show sid per system process id
+showsess                    ?                         show sessions statistics
+showtoad                                              show toad users
+showsql                     SID                       show information about specific SID
+               
+* Database Objects Handling - Tablespaces, Files, Table, Indexes, Views,...                    
+*------------------------------------------------------------------------------------
+findind                     index_name                find index
+findsyn                     synonym_name              find synonym
+findobj                     object_name               find object
+findtab                     table_name                find table
+showallfiles                                          show all files by tablespace
+showallfilesdb                                        show all files by tablespace - while database in mount state (e.g for cold bkup)
+showallfiles8i                                        show all files by tablespace for 8i
+showcompile                                           show invalid objects + option to compile them
+showdblinks                                           show all dblinks (database links)
+showdbsize.sh                                         show dbsize for all machine (warren use it)
+showexts.sh                                           need to fix
+showextwarning                                        Shows segments whose NEXT extent will not fit in the largest free space
+showfileresize              tablespace                show all files per tablespace and the anmount of resize (tablespace is option)
+showfmax                    tablespace                show fregmantation per tablespace (extents)
+showextents                 tablespace                show fregmantation per tablespace (extents)
+showjobs                                              show all jobs
+showrbs                                               show rollback segments statistics
+showmidtrans                                          show how long the rollback recover will take if delete/update is prematurely terminated
+showredos                                             show redo logs statistics
+showrole                    role                      show all information about specific role
+showroles                                             show all roles
+showsegs                    tablespace                show all segments per tablespace
+showtsall                   tablespace                show all segments per tablespace
+showseqs                                              show all sequences
+showspc                     table_name                show space allocated and used per table
+showspctsps                 tablespace                show space allocated and used per tablespace
+showtable                   table                     show all information about table
+showtablescript             owner.table               show create script for table and associated indexes/grants/synonyms
+showtpct                    percent                   show tablespace with less percentage of space
+showtsps                                              show all tablespaces
+showtspsfiles               tablespace                show tablespace files and raws (Genesis)
+showtspsraw                 tablespace                show tablespace files and raws (Igen)
+showtsps8i                                            show all tablespaces for 8i
+showuser                    username                  show all information about user
+showusers                                             show all users with sizes
+showusrs                                              show all users without sizes
+showobj_last_analyze        days                      show all the objects in the databases that were not analyzed 
+               
+
+=========================================================
+===== Undocumented scripts ==============================
+=========================================================
+copy_prod_to_stage         username                   copy production to usage (USER and USER_MASTER)
+cre_dba_accounts.sh                                   create admin users (extenal)
+cre_grf_db_links.sh                                   grant select on dba_db_links to public
+cre_install_help.sh        USER PASS INSTANCE         install help
+cre_show_lock_pkg.sql                                 Package for displaying lock information for show8* scripts
+cre_show_users_view.sh                                create the show_user_view and show_users_view at SYS
+cre_sys_views_packages.sh						      
+create_another_user.sh     SID new_usr new_pwd o      usr  Creates a new user as a copy of an existing one
+create_view_aud.sql                                   create view_aud$
+dba_auto_connect.sql       username                   connect as other user (like su - )
+dbac                       SID USER SQL               execute SQL as USER (like su - USER c "command")
+dbac.sql                 						      
+del_creofa.sh                                         Deletes auxiliary oracle folder (exports,logs, dumps)                                                   
+findview                   VIEW_NAME                  finds %VIEW_NAME% in dba_views
+fixtbs.sql                                            Fix tablespaces extents for I3
+gen_create_index_base_uat  OWNER TABLE                Build unusable indexes (direct load)    
+gen_db_indexes             see help                   Generates db indexes for schema or single table
+gen_parallel_nologging                                alter tables and indexes with "parallel 16 nologging" statement
+gen_part_row_move                                     generates ALTER TABLE ... ENABLE ROW MOVEMENT
+gencontextsync                                        exec ctxsys.ctx_ddl.sync_index
+gencopyarchive             HOST SID SEQ [TO_SEQ]      Register archivelogs (standby database)
+gencopyarchivephysical     HOST SID SEQ [TO_SEQ]      scp+register archivelogs (standby database)
+gencreateappsynonym                                   Creates application synonyms
+gencreatedir                                          Create directories for EXP and DATAPUMP
+gencreatedir_oravl         oravl_no                   Create directory ORAVL${NAME}_DIR
+gencreatesynony_overwrite						      
+gendropdir                 user                       Drop user directories (except datapump and export)
+gendropseqs                user                       Drop user sequences
+gendroptables              user                       Drop table cascade constraints for user
+gendropuser                user                       Drop constraints and objs not in ('TABLE','INDEX')
+geninitrans                user                       Change inittrans
+genkilltoad                                           Kill non-system TOAD connections except GEN_QUERY_USER
+genkilltoadall                                        Kill non-system TOAD connections
+genmod_cnv_download_batch                             Revoke privs from cnv_download_batch
+genrebuilduser             user                       ALTER TABLE .. MOVE STORAGE/ALTER INDEX REBULD STORAGE
+genrefsyn                  owner name                 Create sysnonms for users list
+genregisterlog             sid log                    Register LOGCAL LOGFILE
+genseqorder                                           ALTER SEQUENCE ... ORDER; 
+gentab_move_tbsp                                      move les to another tablespace
+gentab_move_tbsp_size                                 move tables to another tablespace (     
+gentiger_aimdba                                       Create TIGER and AIM_DBA roles
+gentrgdisable                                         Generate trigger disable statement
+gentrgenable                                          Generate trigger enable statement
+genunregister_snapshot                                dbms_snapshot.unregister_snapshot
+getdbpass										      
+getpas                                                Obtain passwords from create scripts
+getsql                     session_sid                Get SQL query for sesion
+rman_chkconf
+rman_config_check
+rman_sys_change
+rmanc
+rmanc10
+setprompt.ksh
+setprompt.tcsh
+setsequence.sh
+show8lock_no                                    Show current and transaction locks
+show_weekly_stats
+showauditstat
+showawrparams
+showbrokensyn                                   Show broken synonyms
+showcontext                index_name           From CTX_INDEXES, CTX_INDEX_VALUES
+showdbmem                                       show db memory size
+showdbtime                                      show db information
+showdisablecons
+showdpinfo                 DP_FILE> DIR=DP_DIR  show datapump information
+show_dumpfile_info.sql                          package for showdpinfo
+showexpobjects
+showfree
+showfullscan
+showindoubt
+showinvlogs
+showipcs
+showprogress
+showps
+showreglogs
+showrman
+showseqoverflow
+showspeed
+showstdby
+showtmp
+showtmptables
+showtrace
+showxmldb
+sql
+temp.out
+temp.sql
+toad.sql
+truncate_aud_table.sql
+
+* Create TEMP/Account users
+*-----------------------------------------------------------------------------------------
+gencreate_dit_monitor_user                            Creates DIT_MONITOR_USER
+gencreate_gen_query_user                              -
+gencreate_perf_monitor_user                           -                               
+gencreate_sensis_quser                                -
+gencreate_sensis_quser_dw                             -
+gencreate_sensis_quser_w79878                         -                                       
+gencreate_REF_SELF_SERVICE                            CREATE USER REF_SELF_SERVICE
+gencreate_ccop_user              USER                 Creates user ccop
+gencreate_cnv_check_user                              Create CNV_CHECK_USER
+gencreate_cnvdownload_user                            Creates CNV_DOWNLOAD_BATCH user + procedures
+gencreate_dev_user               USER                 Creates USER
+cr_refresh_mngr_abp                                   CREATE USER REFRESH_MNGR
+
+gencreateprofile                                      Createneric profile
+gencreateprofile_dvt                                  Create Profile for DVT
+ 

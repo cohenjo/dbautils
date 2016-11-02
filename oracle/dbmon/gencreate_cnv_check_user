@@ -1,0 +1,52 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+CREATE USER CNV_CHECK_USER
+  IDENTIFIED BY CNV_CHECK_USER_50575
+  DEFAULT TABLESPACE CONV_DATA
+  TEMPORARY TABLESPACE TEMP
+  PROFILE DEFAULT
+  ACCOUNT UNLOCK;
+
+  CREATE ROLE NO_TOAD_ROLE;
+  GRANT CONNECT TO CNV_CHECK_USER;
+  GRANT SELECT_CATALOG_ROLE TO CNV_CHECK_USER;
+  GRANT RESOURCE TO CNV_CHECK_USER;
+  ALTER USER CNV_CHECK_USER DEFAULT ROLE ALL;
+
+  GRANT SELECT ANY TABLE TO CNV_CHECK_USER;
+  GRANT SELECT ANY SEQUENCE TO CNV_CHECK_USER;
+
+  GRANT CREATE SYNONYM TO CNV_CHECK_USER;
+  GRANT NO_TOAD_ROLE to CNV_CHECK_USER;
+  GRANT execute on DBMS_SNAPSHOT to CNV_CHECK_USER;
+  grant execute on REF_APPL.AMDOCS_SECURITY to CNV_CHECK_USER;
+  grant execute on REF_APPL.AMDOCS_SECURITY_USER to CNV_CHECK_USER;
+  grant execute on REF_APPL.GET_NORMALIZED_NAME to CNV_CHECK_USER;
+  grant execute on REF_APPL.GET_NORMALIZED_NAME_CASE to CNV_CHECK_USER;
+
+  -- abp
+  grant BLAPPO_SEL     to CNV_CHECK_USER; 
+  grant BLOPRO_SEL     to CNV_CHECK_USER; 
+  grant BLREFWORK_SEL  to CNV_CHECK_USER; 
+  grant SLFDBO2_SEL    to CNV_CHECK_USER; 
+  grant SLFORDO2_SEL   to CNV_CHECK_USER; 
+  grant SLFREPO2_SEL   to CNV_CHECK_USER; 
+  grant TSTDBO2_SEL    to CNV_CHECK_USER; 
+  grant XBLSEC2_SEL    to CNV_CHECK_USER; 
+  grant XBLSECO_SEL    to CNV_CHECK_USER; 
+
+  alter user CNV_CHECK_USER quota unlimited on conv_data;
+  revoke unlimited tablespace from CNV_CHECK_USER;
+
+  alter USER CNV_CHECK_USER IDENTIFIED BY CNV_CHECK_USER_50575;
+  alter USER CNV_CHECK_USER default tablespace conv_data;
+EOF

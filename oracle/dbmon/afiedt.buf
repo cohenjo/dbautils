@@ -1,0 +1,4 @@
+select db_id, db_key from rc_backup_piece
+where db_id = 2941069190
+and dbinc_key = 5078
+/

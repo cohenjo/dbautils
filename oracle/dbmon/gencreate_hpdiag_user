@@ -1,0 +1,17 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to generate truncate for user 
+#
+#  USAGE: gencreate_dev_user username
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+sqlplus "/ as sysdba" <<EOF
+set line 132 pages 0 echo on trimspo on
+create user hpdiag_user identified by xxxx default tablespace sysaux temporary tablespace temp;
+grant create session , select any dictionary to hpdiag_user;
+grant MONITOR_WORK_UPDATOR_ROLE to  hpdiag_user;
+EOF
+add_to_alt_user_password.sh HPDIAG_USER

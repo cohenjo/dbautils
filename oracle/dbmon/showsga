@@ -1,0 +1,46 @@
+#!/bin/ksh 
+
+#######################################################################
+# Sam Yeoman
+# Script: showsga
+# Description: sga statistics
+#######################################################################
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 192
+column mb format 99,999,999
+column SGA_RESOURCE format a39
+column NAME for a26
+
+SELECT NAME as SGA_RESOURCE, BYTES/1024/1024 MB , RESIZEABLE  FROM V\$SGAINFO
+ORDER BY 2 DESC
+/
+
+SELECT * FROM(SELECT POOL, NAME, BYTES/(1024*1024) MB FROM V\$SGASTAT WHERE NAME NOT IN ('buffer_cache','free memory','log_buffer') 
+ORDER BY POOL, BYTES DESC)WHERE ROWNUM <= 10
+/
+
+column ALLOC_MB format 99,999,999
+column USED_MB format 99,999,999
+column FREE_MB format 99,999,999
+column pool format a15
+
+select 
+    f.pool,
+    a.allocated ALLOC_MB,
+    a.allocated - f.bytes/1024/1024 USED_MB,
+    f.bytes/1024/1024 FREE_MB
+from 
+    v\$sgastat f,
+    (select pool, sum(bytes/1024/1024) allocated from v\$sgastat where name <> 'buffer_cache' group by pool) a
+where 
+    f.name='free memory' and
+    a.pool=f.pool 
+order by pool;
+
+prompt 
+EOF

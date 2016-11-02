@@ -1,0 +1,55 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  USAGE: gengencontext tablespace_name [ON|OFF]
+#
+#*****************************************************************************
+
+TEMP_FILE=/tmp/gengencontext_$$.sql
+TEMP_FILE_LOG=/tmp/gengencontext_run_$$.sql
+
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set feed off verify off line 132 pages 0 echo off trimspo on
+spool $TEMP_FILE
+PROMPT
+select 'exec ctxsys.ctx_ddl.sync_index('''||idx_owner||'.'||idx_name||''');' from ctxsys.CTX_INDEXES
+where idx_owner<>'CTXSYS'
+order by 1;
+
+EOF
+
+#--------------------------------------------------------------------------------------------
+num_of_changes=`grep -i "exec" $TEMP_FILE | wc -l`
+echo "------------------------------------------------------------------------------"
+echo "$num_of_changes changes to commit "
+echo "Temporary script: $TEMP_FILE"
+echo "------------------------------------------------------------------------------"
+if (( num_of_changes==0 ))
+then
+	rm -f $TEMP_FILE
+	exit 0
+fi
+#--------------------------------------------------------------------------------------------
+typeset -u PARAM=`echo $4|cut -d. -f1`
+Local=$PARAM
+if [ -z "$PARAM" ]
+then
+	echo "Would you like to execute ? (Y/N) \c"; read Local
+fi
+
+if [ "$Local" = "Y" -o "$Local" = "y" ]
+then
+	echo "set echo on pages 0 lines 199 trimspo on
+	spool $TEMP_FILE_LOG
+	@$TEMP_FILE
+	spool off
+	" | sqlplus "/ as sysdba" 
+	num_of_errors=`grep -i "ORA-" $TEMP_FILE_LOG | grep -v "12003" | grep -v "01432" | wc -l`
+	echo "------------------------------------------------------------------------------"
+	echo "$num_of_errors changes committed with errors "
+	echo "------------------------------------------------------------------------------"
+
+fi
+rm -f $TEMP_FILE
+rm -f $TEMP_FILE_LOG

@@ -1,0 +1,44 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to show role privs
+#
+#  USAGE: showrole role_name
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+export NAME=$1
+if [ -z "$NAME" ] 
+then
+  echo "DLE must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set verify off line 199 feed off pages 300
+col last_active_time for a14
+col sql_id for a14
+col executions for 999,999,999,999
+col log_read for 9,999,999.9 
+col rows_read for 999,999 head "ROWS|READ"
+col elapsed_sec for 9,999.9 head "ELAPSED|SEC"
+col module for a19 trunc
+col sql_text for a70 trunc
+
+alter session set nls_date_format='DD/MM/YY HH24:MI';
+
+select * from 
+(
+    select 
+        last_active_time,
+        sql_id,
+        executions,
+        round(buffer_gets/executions,1) log_read,
+        round(rows_processed/executions,1) rows_read,
+        round(elapsed_time/executions/1000000,1) elapsed_sec,
+        module,
+        sql_text
+    from v\$sqlarea where upper(sql_text) like upper('%${NAME}%') and sql_text not like '%v\$sqlarea%' and executions>0
+    order by 1 desc,2
+) where rownum<50;
+EOF

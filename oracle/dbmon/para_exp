@@ -1,0 +1,91 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  SOURCE          : /oravl01/oracle/dba//bin/para_exp
+#  VERSION         : $Revision: 1.0 $
+#  AUTHOR          : Kuen-Yih Chang (kchang@amdocs.com)
+#  DATE            : $Date: Tue Oct  2 18:06:44 CDT 2001 $
+#
+#  This script is used to export table by partitions.  gzexp will be used.
+#  Also, should run this script as local (ORACLE_SID or TWO_TASK is set).
+#  The dmp file generated will contain only data without any constraints, and
+#  a sql is generated for all DDLs, including constraints and grants.
+#  !! constraints=n only works with 8i !!
+#
+#  USAGE: para_exp 
+#
+#  Options: 
+#
+#  Example:
+#
+#*****************************************************************************
+
+typeset -u tt=
+typeset -l tbl=
+typeset -i pn=
+typeset -i pcnt=
+
+echo ORACLE_HOME=$ORACLE_HOME
+echo ORACLE_SID=$ORACLE_SID
+echo "TWO_TASK should be set only if ORACLE_SID is not set or is in different home."
+echo "What should be set for TWO_TASK: \c"; read tt
+[ -z "$tt" ] || export TWO_TASK=$tt
+echo "Enter Oracle username to export: \c"; read uid
+echo "Enter password for $uid: \c"; stty -echo; read pwd; stty echo; echo
+echo "Enter parallelism for export: \c"; read pn
+echo "Enter file name for list of tables to export (Enter for all): \c"; read tl
+if [ ! -z "$tl" ]
+then
+  cat $tl | awk 'BEGIN{print "and segment_name in ("}{
+  print dlm "#"$1"#"; dlm=","} END{print ")"}' | tr "a-z#" "A-Z'" > tl_$$.sql
+fi
+
+# Generate DDL script
+echo "Generating DDL script $uid.sql ...."
+exp $uid/$pwd rows=n compress=n file=$uid.dmp >/dev/null 2>&1
+imp $uid/$pwd show=y full=y file=$uid.dmp log=$uid.show >/dev/null 2>&1
+showimp2sql $uid.show > $uid.sql
+rm -f $uid.dmp $uid.show
+
+run=`basename $0`_$$
+echo "create sequence ${run}_1; "  | sqlplus -s /
+
+echo "Exporting tables / partitions in parallel ...."
+## FIX IT HERE: NEED TO ORDER BY SIZE
+echo "set feed off pages 0
+select SEGMENT_NAME||decode(PARTITION_NAME,null,'',':')||PARTITION_NAME
+from user_segments
+where segment_type like 'TABLE%'
+`[ -f tl_$$.sql ] && cat tl_$$.sql`
+order by bytes desc;
+" | 
+sqlplus -s $uid/$pwd | tr "A-Z" "a-z" > $run.lst
+typeset -i eoj=`cat $run.lst | wc -l`
+
+cat <<-EOSH > $run.sh
+#!/bin/sh
+
+export NLS_LANG=AMERICAN_AMERICA.WE8ISO8859P1
+typeset -i jno=\`echo "set pages 0 feed off
+select ${run}_1.nextval from dual;" | sqlplus -s / \`
+while [ \$jno -le $eoj ]
+do
+  tbl=\`sed -n "\$jno p" $run.lst\`
+  echo \`date\` exporting \$tbl \$jno of $eoj ...
+  gzexp direct=y tables=\$tbl grants=n indexes=n statistics=none constraints=n compress=n file=\$tbl.dmp log=exp_\$tbl.log userid=$uid/$pwd 1>/dev/null 2>&1
+  jno=\`echo "set pages 0 feed off
+select ${run}_1.nextval from dual;" | sqlplus -s / \`
+done
+echo process finished last seq got \$jno / $eoj
+
+EOSH
+
+chmod 700 $run.sh
+pcnt=1
+while [ $pcnt -le $pn ]
+do 
+  echo running $run.sh $pcnt ....
+  $run.sh > $run.log$pcnt 2>&1 &
+  (( pcnt = pcnt + 1 )) 
+done
+

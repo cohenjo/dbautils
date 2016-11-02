@@ -1,0 +1,131 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show rollback segments status
+#
+#  USAGE: showrbs
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+echo "*******************************************************************************************************"
+echo "*                            Rollback Segments status and statistics                                  *"
+echo "*******************************************************************************************************"
+sqlplus -s "/ as sysdba" <<EOF
+set linesize 170 pages 100 feedback off trims on
+
+col segment_name	for a15		head Name
+col rss			for 999,999,999	head "Rssize|(KB)"
+col opt			for 999,999,999	head "Optsize|(KB)"
+col usn 		for 99 		head Id
+col extents 		for 9999 	head Ext 
+col writes 		for 999,999,999,999	head Writes
+col xacts		for 99 		head "Act|Trx"
+col status		for a3 truncate head Stat
+col wraps 		for 999,999	head Wrap
+col waits		for 999,999	head Wait
+col gets 		for 999,999,999	head Gets
+col shrinks 		for 999		head Shrink
+col initial_extent	for 999,999	head "Ini Ext (KB)"
+col tablespace_name     for a9 trunc   head Tsps               
+col next_extent	for 999,999	head "Nxt Ext (KB)"
+
+SELECT d.segment_name, initial_extent/1024 initial_extent,next_extent/1024 next_extent,rssize/1024 rss, optsize/1024 opt,  usn, extents, writes, 
+       xacts, d.status, wraps, waits, gets, shrinks, tablespace_name
+FROM v\$rollstat s, dba_rollback_segs d
+WHERE s.usn = d.segment_id
+;
+EOF
+
+echo " "
+echo "*******************************************************************************************************"
+echo "*                                       Header contention                                             *"
+echo "*******************************************************************************************************"
+echo "* Any nonzero value in the 'Waits' or the 'undo header' indicates contention.                         *"
+echo "* The Ratio of the sum of waits to the sum of gets should be less than 1%, else, more rollback        *"
+echo "* segments are needed.                                                                                *"
+echo "*******************************************************************************************************"
+sqlplus -s "/ as sysdba" <<EOF
+set linesize 132 pages 100 feedback off trims on
+
+col name	for a15		head Name
+col waits 	for 999,999,999         head Waits
+col gets        for 999,999,999,999   head Gets
+col ratio 	for .9999	head Ratio
+
+SELECT name, waits, gets, waits/gets ratio
+FROM v\$rollstat s, v\$rollname n
+WHERE s.usn = n.usn
+;
+set heading off
+SELECT  'Sum:  ' name, sum(waits) waits, sum(gets) gets, sum(waits)/sum(gets) ratio
+FROM v\$rollstat s, v\$rollname n
+WHERE s.usn = n.usn
+;
+
+set heading on
+
+SELECT class, count 
+FROM v\$waitstat
+WHERE class in ('system undo header', 'undo header')
+;
+EOF
+echo " "
+echo "*******************************************************************************************************"
+echo "*                                       RBS Locks                                                     *"
+echo "*******************************************************************************************************"
+sqlplus -s "/ as sysdba" <<EOF
+set linesize 150 pages 100 feedback off trims on
+
+col sid 		for 999		head Sid
+col serial#		for 99999	head Serial#
+col process		for 99999	head Process
+col status		for a4		head Stat
+col start_time				head "Start time"
+col segment_name	for a16 	head Name
+col username		for a30 	head "Locking user"
+col osuser		for a15		head "Os user"
+
+SELECT d.segment_name, s.sid, s.serial#, s.process, substr(s.status,1,3) status,
+       substr(t.start_time,1,17) start_time, s.username, s.osuser
+FROM dba_rollback_segs d, v\$session s, v\$transaction t, v\$rollstat r
+WHERE s.saddr = t.ses_addr
+AND   t.xidusn = r.usn
+AND   ((r.curext = t.start_uext-1)
+       OR ((r.curext = r.extents-1)
+            AND t.start_uext=0
+          )
+      )
+AND   d.segment_id = r.usn
+ORDER BY t.xidusn
+;
+EOF
+echo " "
+echo "*******************************************************************************************************"
+echo "*                                       RBS Transactions                                              *"
+echo "*******************************************************************************************************"
+sqlplus -s "/ as sysdba" <<EOF
+set linesize 150 pages 100 feedback off trims on tab off
+col SID         for 99999 trunc
+col serial#     for 99999 trunc         head SER#
+col username    for a25                 head "User Name"
+col osuser      for a15 trunc           head "Remote|OS User"
+col machine     for a25 trunc           head "Machine"
+col status      for a3 trunc
+col command     for a15 trunc           head "Command"
+col process     for a9 trunc            head "Remote|Process"
+col RBS		for a6 trunc            head "RBS"
+col log_io	for 999,999
+col phy_io	for 999,999
+col start_time	for a11 trunc		head "Start Time"
+col transt	for a3 trunc		head "Tra"
+col USED_UBLK	for 999,999,999,999		head "Tra"
+
+SELECT vs.sid, vs.serial#, vs.username,  vs.status, 
+	machine,  vs.osuser,process, 
+       substr(vt.start_time,1,5)||' '||substr(vt.start_time,10,5) start_time, vt.status,USED_UBLK, rn.NAME as RBS
+  FROM sys.v_\$session vs,
+       sys.v_\$transaction vt,
+       sys.v_\$rollname rn
+WHERE vs.taddr = vt.addr(+) AND vt.xidusn = rn.usn 
+order by rn.name;
+EOF

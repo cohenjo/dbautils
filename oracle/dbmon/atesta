@@ -1,0 +1,6 @@
+suut02	   IAMTR4     10.2.0.4.0	    224gb      2016mb(sga)    FS: 08,
+suut02	   IAMTRA     10.2.0.4.0	    225gb      2016mb(sga)    FS: 21,
+suut02	   IAMTRB     10.2.0.4.0	    225gb      2016mb(sga)    FS: 22,
+suut02	   IAMTRC     10.2.0.4.0	    226gb      2016mb(sga)    FS: 23,
+suut02	   IAMUTM     10.2.0.4.0	     13gb      1024mb(sga)    FS: 02,
+suut02	   IAMSP4     10.2.0.4.0	    496gb      4000mb(sga)    FS: 06,

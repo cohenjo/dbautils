@@ -1,0 +1,19 @@
+#!/bin/ksh
+#*****************************************************************************
+#
+#  This script is used to show all roles
+#
+#  USAGE: showroles
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+sqlplus -s "/ as sysdba" <<EOF
+clear buffer
+set pages 900 verify off line 132 feed off
+col OBJECT_PATH for a30
+col COMMENTS    for a90
+SELECT OBJECT_PATH, min(COMMENTS) as COMMENTS FROM DBA_EXPORT_OBJECTS WHERE OBJECT_PATH NOT LIKE '%/%'
+group by OBJECT_PATH
+order by 1,2
+;
+EOF

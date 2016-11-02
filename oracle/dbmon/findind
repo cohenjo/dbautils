@@ -1,0 +1,42 @@
+#!/bin/sh
+#*****************************************************************************
+#
+#  This script is used to find index
+#
+#  USAGE: findind index
+#
+#  By Adi Zohar - Feb 2003
+#*****************************************************************************
+
+typeset -u NAME=`echo $1|cut -d. -f1`
+if [ -z "$NAME" ] 
+then
+  echo "Index must be provided: \c"; read NAME
+fi
+
+sqlplus -s "/ as sysdba" <<EOF
+set feed off
+set echo off
+set verify off
+set pagesize 132
+set linesize 152
+column tablespace_name format a22 head TABLESPACE
+column table_name format a30
+column index_name format a30
+column blocks format 999
+column empty_blocks head empty format 9,999
+column max_extents head 'max|ext' format 9,999
+column initial_extent head 'init|ext MB' format 9,999
+column next_extent head 'next|ext MB' format 9,999
+column owner format a28
+column mb head 'Size MB' format 999,999
+select dt.owner, dt.table_name,  dt.index_name, dt.tablespace_name,count(*) partitions , sum(ds.bytes/1024/1024) mb
+from  dba_indexes dt, dba_segments ds
+where 
+	index_name like upper('%${NAME}%')
+	and ds.segment_name=dt.index_name 
+	and ds.owner=dt.owner
+group by dt.owner, dt.table_name,  dt.index_name, dt.tablespace_name
+order by index_name, owner
+/
+EOF

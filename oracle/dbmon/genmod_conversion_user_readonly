@@ -1,0 +1,8 @@
+#!/bin/ksh
+gendrop_cnv_sys_proc
+
+for i in CNV_USER_DVT CNV_USER_CORE CNV_USER_SFU CNV_USER_FINANCE CNV_USER_CR275 CNV_USER_OTHERS CNV_USER_DVIC
+do
+        username=`echo $i | awk  -F ":" '{print $1}'`
+        genmod_cnv_users_readonly ${username}
+done

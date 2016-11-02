@@ -1,0 +1,15 @@
+#!/bin/ksh
+
+. ~/.profile
+#----------------------------------------------------------------------#
+# Initializing Variables                                               #
+#----------------------------------------------------------------------#
+ORATAB=/etc/oratab
+
+echo "checking RMAN db configuration for databases:\n"
+
+for sid in `awk 'BEGIN {FS=":"} {if (($3=="Y" || $3=="N") && $1!="*")  { print $1 }} ' /etc/oratab  `
+do
+        echo "$sid "
+	/opt/omni/lbin/util_oracle8.exe -CHKCONF $sid
+done
